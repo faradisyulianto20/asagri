@@ -83,7 +83,7 @@ async function startClient() {
 
   client.on("qr", async (qr) => {
     try {
-      qrDataUrl = await qrcode.toDataURL(qr);
+      qrDataUrl = await qrcode.toDataURL(qr, { width: 400, margin: 2 });
     } catch {
       qrDataUrl = null;
     }

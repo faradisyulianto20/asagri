@@ -1,11 +1,11 @@
 # Asagri IoT Monitor
 
-Backend monitoring IoT ESP32 (SHT31-D) dengan dashboard HP dan notifikasi WhatsApp.
+Backend monitoring IoT ESP32 (SHT31-D) dengan dashboard React (responsif HP & desktop) dan notifikasi WhatsApp.
 
 ```
 ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
-                              |---> dashboard mobile (GET /dashboard)
-                              |---> wa-gateway (whatsapp-web.js) --> WhatsApp
+                               |---> React dashboard (GET /dashboard)
+                               |---> wa-gateway (whatsapp-web.js) --> WhatsApp
 ```
 
 ## Struktur
@@ -13,6 +13,7 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 | Folder | Isi |
 |---|---|
 | `backend/` | FastAPI: API sensor, dashboard, logika notifikasi |
+| `frontend/` | React (Vite + TypeScript + recharts): dashboard responsif |
 | `wa-gateway/` | Node.js whatsapp-web.js: kirim pesan WhatsApp, session + QR |
 | `esp32/main.ino` | Kode ESP32 (logika asli + WiFi & HTTP POST) |
 | `scripts/simulate_esp32.py` | Simulasi ESP32 tanpa hardware |
@@ -26,7 +27,7 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 ## 2. Deploy backend ke Railway
 
 1. Buat project baru di Railway, hubungkan repo (folder ini).
-2. Tambah service, set **root directory = `backend`**.
+2. Tambah service, set **root directory = `/`** (root repo — backend kini di-build multi-stage bersama frontend React).
 3. Set environment variable (salin dari `backend/.env.example`):
    - `DATABASE_URL` (dari Supabase)
    - `API_TOKEN` (token acak, akan dipakai ESP32)
@@ -35,6 +36,9 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
    - `WHATSAPP_TO` (nomor tujuan, format internasional tanpa `+`)
    - ambang suhu/kelembaban opsional
 4. Generate domain → misal `https://backend.up.railway.app`.
+
+> Frontend React otomatis ter-build oleh Docker multi-stage dan disajikan
+> oleh FastAPI di `/` dan `/dashboard` (same-origin, tanpa CORS).
 
 ## 3. Deploy wa-gateway ke Railway
 
@@ -53,9 +57,9 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 
 ## 4. Hubungkan WhatsApp
 
-1. Buka dashboard backend dari HP: `https://backend.up.railway.app/dashboard`.
-2. Jika WhatsApp belum terhubung, akan muncul **QR code** di bagian bawah dashboard.
-3. Scan dengan WhatsApp **nomor tujuan** (ganti dari pengaturan WhatsApp: Menu → Perangkat tertaut → Tautkan perangkat).
+1. Buka dashboard dari HP atau desktop: `https://backend.up.railway.app/`.
+2. Jika WhatsApp belum terhubung, **QR code** muncul otomatis sebagai **pop-up** di tengah layar (ukuran besar, tajam). Bisa dibuka lagi lewat tombol "Tampilkan QR" di kartu WhatsApp Gateway.
+3. Scan dengan WhatsApp **nomor tujuan** (Menu → Perangkat tertaut → Tautkan perangkat).
 4. Session otomatis tersimpan (volume + cadangan di Supabase), jadi tidak perlu scan ulang sering-sering.
 
 ## 5. ESP32
@@ -68,7 +72,7 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 3. Upload. Logika relay/buzzer/LCD tetap sama seperti kode asli Anda.
 4. Cek Serial Monitor: muncul `Kirim OK (HTTP 200)`.
 
-## 6. Uji tanpa ESP32
+## 6. Pengembangan frontend (dev mode)
 
 ```bash
 pip install -r backend/requirements.txt
@@ -76,22 +80,33 @@ cd backend && uvicorn main:app --host 0.0.0.0 --port 8000
 
 # di terminal lain, jalankan simulasi:
 python scripts/simulate_esp32.py --url http://localhost:8000 --token <API_TOKEN>
+
+# di terminal lain, jalankan Vite (proxy /api → localhost:8000):
+cd frontend && npm install && npm run dev
 ```
 
-Buka `http://localhost:8000/dashboard` — suhu naik-turun otomatis akan
-memicu status relay dan notifikasi WhatsApp.
+Buka `http://localhost:5173` — suhu naik-turun otomatis akan memicu status relay
+dan notifikasi WhatsApp.
+
+### Build frontend untuk produksi
+
+```bash
+cd frontend && npm run build
+# hasil di frontend/dist, otomatis disajikan backend jika dist ada.
+# (di Railway ini dilakukan otomatis oleh Docker multi-stage)
+```
 
 ## API
 
 | Method | Path | Keterangan |
 |---|---|---|
 | POST | `/api/sensor` | ESP32 mengirim data (header `X-API-Token`) |
-| GET | `/api/latest` | Data terbaru |
+| GET | `/api/latest` | Data terbaru (suhu, kelembaban, relay, buzzer, sensor_error) |
 | GET | `/api/history?hours=24` | Riwayat grafik |
 | GET | `/api/wa/status` | Status WhatsApp + QR |
 | POST | `/api/wa/session` | Cadangan session (dipakai gateway) |
 | GET | `/api/wa/session` | Ambil session cadangan (dipakai gateway) |
-| GET | `/dashboard` | Dashboard mobile |
+| GET | `/dashboard` | Dashboard React (alias dari `/`) |
 
 ## Keamanan
 

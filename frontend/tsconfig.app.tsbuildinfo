@@ -1,0 +1,1 @@
+{"root":["./src/App.tsx","./src/api.ts","./src/main.tsx","./src/components/HistoryChart.tsx","./src/components/HumidityCard.tsx","./src/components/QrModal.tsx","./src/components/StatusChips.tsx","./src/components/TempCard.tsx","./src/components/WaCard.tsx","./src/hooks/useDashboardData.ts"],"version":"5.6.3"}

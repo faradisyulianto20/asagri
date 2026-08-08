@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
@@ -52,6 +54,8 @@ def latest(db: Session = Depends(get_db)) -> dict:
         "humidity": row.humidity,
         "relay_fan": row.relay_fan,
         "relay_humidifier": row.relay_humidifier,
+        "relay_3": row.relay_3,
+        "relay_4": row.relay_4,
         "buzzer": row.buzzer,
         "sensor_error": row.sensor_error,
         "created_at": row.created_at.isoformat(),
@@ -114,9 +118,27 @@ def load_wa_session(db: Session = Depends(get_db)) -> dict:
     return {"available": True, "data": row.data.decode("utf-8")}
 
 
+def _frontend_dist() -> Path:
+    candidates = [
+        Path("static/dist"),
+        Path(__file__).parent / "static" / "dist",
+        Path(__file__).parent.parent / "frontend" / "dist",
+    ]
+    for p in candidates:
+        if (p / "index.html").is_file():
+            return p
+    return candidates[0]
+
+
 @router.get("/dashboard")
 def dashboard() -> FileResponse:
-    return FileResponse("static/dashboard.html")
+    index = _frontend_dist() / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(
+        status_code=404,
+        detail="Frontend belum di-build. Jalankan: cd frontend && npm run build",
+    )
 
 
 def create_app() -> FastAPI:
@@ -126,4 +148,11 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Asagri IoT Monitor")
     app.include_router(router)
+
+    dist = _frontend_dist()
+    if dist.is_dir():
+        app.mount("/", StaticFiles(directory=str(dist), html=True), name="static")
+    else:
+        print("[backend] frontend dist tidak ditemukan, hanya mode API")
+
     return app
