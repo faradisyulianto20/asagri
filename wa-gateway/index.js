@@ -1,17 +1,79 @@
 const express = require("express");
 const qrcode = require("qrcode");
-const { Client, LocalAuth } = require("whatsapp-web.js");
+const { Client, AuthStrategy } = require("whatsapp-web.js");
 
 const PORT = process.env.PORT || 4100;
 const AUTH_TOKEN = process.env.AUTH_TOKEN || "ganti-token-gateway";
-const SESSION_DIR = process.env.SESSION_DIR || "./session";
 const BACKEND_URL = (process.env.BACKEND_URL || "").replace(/\/$/, "");
 const BACKEND_TOKEN = process.env.BACKEND_TOKEN || "";
 
 let client = null;
 let qrDataUrl = null;
-let lastSession = null;
 let status = { connected: false, registered: false, number: null, starting: true };
+
+class DbAuthStrategy extends AuthStrategy {
+  constructor() {
+    super();
+    this.state = null;
+  }
+
+  async getState() {
+    if (this.state) return this.state;
+    if (!BACKEND_URL || !BACKEND_TOKEN) {
+      console.warn("[gateway] BACKEND_URL/BACKEND_TOKEN belum di-set, sesi tidak dipulihkan dari database");
+      return null;
+    }
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
+        headers: { "X-API-Token": BACKEND_TOKEN },
+      });
+      if (!res.ok) return null;
+      const body = await res.json();
+      if (body.available && body.data) {
+        this.state = JSON.parse(body.data);
+        console.log("[gateway] sesi dipulihkan dari database", body.number ? `(nomor ${body.number})` : "");
+      }
+    } catch (err) {
+      console.error("[gateway] gagal ambil sesi dari database:", err.message);
+    }
+    return this.state;
+  }
+
+  async saveState(state) {
+    this.state = state;
+    if (!BACKEND_URL || !BACKEND_TOKEN) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-Token": BACKEND_TOKEN,
+        },
+        body: JSON.stringify({ data: JSON.stringify(state) }),
+      });
+      if (res.ok) console.log("[gateway] sesi disimpan ke database");
+      else console.error("[gateway] gagal simpan sesi ke database:", res.status, await res.text());
+    } catch (err) {
+      console.error("[gateway] gagal simpan sesi ke database:", err.message);
+    }
+  }
+
+  async clear() {
+    this.state = null;
+    if (!BACKEND_URL || !BACKEND_TOKEN) return;
+    try {
+      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
+        method: "DELETE",
+        headers: { "X-API-Token": BACKEND_TOKEN },
+      });
+      console.log("[gateway] sesi dihapus dari database", res.ok ? "" : `(status ${res.status})`);
+    } catch (err) {
+      console.error("[gateway] gagal hapus sesi dari database:", err.message);
+    }
+  }
+}
+
+const authStrategy = new DbAuthStrategy();
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -48,7 +110,6 @@ app.post("/disconnect", async (_req, res) => {
   }
   client = null;
   qrDataUrl = null;
-  lastSession = null;
   status = { connected: false, registered: false, number: null, starting: false };
   sendJson(res, { status: "disconnected" });
   console.log("[gateway] sesi diputus, QR baru akan dibuat");
@@ -59,7 +120,7 @@ app.get("/status", (_req, res) => {
   sendJson(res, { ...status, qr: status.connected ? null : qrDataUrl });
 });
 
-async function backupSession(session) {
+async function saveNumber(number) {
   if (!BACKEND_URL || !BACKEND_TOKEN) return;
   try {
     await fetch(`${BACKEND_URL}/api/wa/session`, {
@@ -68,17 +129,16 @@ async function backupSession(session) {
         "Content-Type": "application/json",
         "X-API-Token": BACKEND_TOKEN,
       },
-      body: JSON.stringify({ data: JSON.stringify(session) }),
+      body: JSON.stringify({ number }),
     });
-    console.log("[gateway] session dicadangkan ke backend");
   } catch (err) {
-    console.error("[gateway] gagal cadangkan session:", err.message);
+    console.error("[gateway] gagal simpan nomor ke database:", err.message);
   }
 }
 
 async function startClient() {
   const options = {
-    authStrategy: new LocalAuth({ dataPath: SESSION_DIR }),
+    authStrategy,
     puppeteer: process.env.CHROMIUM_PATH
       ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"], executablePath: process.env.CHROMIUM_PATH }
       : { headless: true },
@@ -96,18 +156,12 @@ async function startClient() {
     console.log("[gateway] QR baru tersedia, scan lewat dashboard");
   });
 
-  client.on("authenticated", async (session) => {
-    lastSession = session;
-    qrDataUrl = null;
-    console.log("[gateway] whatsapp terautentikasi");
-    backupSession(session);
-  });
-
   client.on("ready", () => {
     status.connected = true;
     status.starting = false;
     status.number = client.info.wid.user;
     console.log("[gateway] whatsapp siap, nomor:", client.info.wid.user);
+    saveNumber(client.info.wid.user);
   });
 
   client.on("disconnected", (reason) => {
@@ -126,5 +180,8 @@ async function startClient() {
 
 app.listen(PORT, () => {
   console.log(`[gateway] wa-gateway berjalan di port ${PORT}`);
+  if (!BACKEND_URL || !BACKEND_TOKEN) {
+    console.warn("[gateway] PERINGATAN: BACKEND_URL/BACKEND_TOKEN belum di-set, sesi tidak tersimpan di database!");
+  }
   startClient();
 });

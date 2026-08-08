@@ -222,6 +222,14 @@ def simulate(payload: SimulatePayload, db: Session = Depends(get_db)) -> dict:
     }
 
 
+@router.get("/api/notify/status")
+def notify_status() -> dict:
+    return {
+        "available": notifier.last_delivery is not None,
+        "last": notifier.last_delivery,
+    }
+
+
 @router.get("/api/wa/status")
 def wa_status() -> dict:
     try:
@@ -245,17 +253,33 @@ def wa_disconnect() -> dict:
         raise HTTPException(status_code=502, detail=f"gateway error: {exc}")
 
 
+@router.post("/api/wa/test", dependencies=[Depends(_check_admin)])
+def wa_test(db: Session = Depends(get_db)) -> dict:
+    result = notifier.send_test(db)
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=502, detail=result.get("error") or "Gagal mengirim pesan uji"
+        )
+    return result
+
+
 @router.post("/api/wa/session", dependencies=[Depends(_check_token)])
 def save_wa_session(payload: dict, db: Session = Depends(get_db)) -> dict:
     data = payload.get("data")
-    if not data:
-        raise HTTPException(status_code=400, detail="data session kosong")
+    number = payload.get("number")
     row = db.scalar(select(WaSession).where(WaSession.name == "default"))
     if row is None:
+        if not data:
+            raise HTTPException(status_code=400, detail="data session kosong")
         row = WaSession(name="default", data=data.encode("utf-8"))
+        if number:
+            row.number = number
         db.add(row)
     else:
-        row.data = data.encode("utf-8")
+        if data:
+            row.data = data.encode("utf-8")
+        if number:
+            row.number = number
     db.commit()
     return {"status": "ok"}
 
@@ -265,7 +289,20 @@ def load_wa_session(db: Session = Depends(get_db)) -> dict:
     row = db.scalar(select(WaSession).where(WaSession.name == "default"))
     if row is None:
         return {"available": False}
-    return {"available": True, "data": row.data.decode("utf-8")}
+    return {
+        "available": True,
+        "data": row.data.decode("utf-8"),
+        "number": row.number,
+    }
+
+
+@router.delete("/api/wa/session", dependencies=[Depends(_check_token)])
+def delete_wa_session(db: Session = Depends(get_db)) -> dict:
+    row = db.scalar(select(WaSession).where(WaSession.name == "default"))
+    if row is not None:
+        db.delete(row)
+        db.commit()
+    return {"status": "ok"}
 
 
 def _frontend_dist() -> Path:
@@ -299,6 +336,10 @@ def _migrate(engine) -> None:
                     "ALTER TABLE sensor_readings "
                     "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'esp32'"
                 )
+                conn.exec_driver_sql(
+                    "ALTER TABLE wa_session "
+                    "ADD COLUMN IF NOT EXISTS number VARCHAR(32)"
+                )
             else:
                 cols = conn.exec_driver_sql("PRAGMA table_info(sensor_readings)").fetchall()
                 names = {row[1] for row in cols}
@@ -306,6 +347,12 @@ def _migrate(engine) -> None:
                     conn.exec_driver_sql(
                         "ALTER TABLE sensor_readings "
                         "ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'esp32'"
+                    )
+                wa_cols = conn.exec_driver_sql("PRAGMA table_info(wa_session)").fetchall()
+                wa_names = {row[1] for row in wa_cols}
+                if "number" not in wa_names:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE wa_session ADD COLUMN number VARCHAR(32)"
                     )
     except Exception as exc:  # noqa: BLE001
         print(f"[backend] migrasi dilewati: {exc}")

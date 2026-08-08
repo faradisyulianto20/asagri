@@ -5,6 +5,8 @@ import {
 } from "../api";
 import type { AdminSettings as AdminSettingsData } from "../api";
 
+const PLACEHOLDER_NUMBERS = ["6281234567890"];
+
 export function AdminSettings({
   token,
   onClose,
@@ -64,6 +66,9 @@ export function AdminSettings({
   };
 
   const th = form.thresholds;
+  const hasPlaceholder = PLACEHOLDER_NUMBERS.some((n) =>
+    form.whatsapp_to.split(",").map((x) => x.trim()).includes(n),
+  );
 
   return (
     <div className="overlay" onClick={onClose}>
@@ -93,6 +98,12 @@ export function AdminSettings({
             <p className="hint">
               Format internasional tanpa tanda + dan tanpa awalan 0.
             </p>
+            {hasPlaceholder && (
+              <p className="field-error">
+                ⚠️ Masih ada nomor default/placeholder (6281234567890). Ganti
+                dengan nomor WhatsApp asli agar notifikasi sampai.
+              </p>
+            )}
           </div>
 
           <div className="field">

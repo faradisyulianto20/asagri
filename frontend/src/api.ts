@@ -64,6 +64,16 @@ export interface LoginResult {
   username: string;
 }
 
+export interface NotifyStatus {
+  available: boolean;
+  last: {
+    ok: boolean;
+    error: string | null;
+    to: string[];
+    at: string;
+  } | null;
+}
+
 export const TOKEN_KEY = "asagri_admin_token";
 export const USERNAME_KEY = "asagri_admin_user";
 
@@ -158,6 +168,20 @@ export function simulateReading(
     method: "POST",
     body: JSON.stringify({ temperature, humidity }),
   });
+}
+
+export function fetchNotifyStatus(): Promise<NotifyStatus> {
+  return getJson<NotifyStatus>("/api/notify/status");
+}
+
+export function testWa(
+  token: string,
+): Promise<{ ok: boolean; error?: string; to?: string[] }> {
+  return adminFetch<{ ok: boolean; error?: string; to?: string[] }>(
+    "/api/wa/test",
+    token,
+    { method: "POST" },
+  );
 }
 
 export function disconnectWa(token: string): Promise<{ status: string }> {

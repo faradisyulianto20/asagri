@@ -42,6 +42,7 @@ class WaSession(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(64), unique=True, default="default")
+    number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow

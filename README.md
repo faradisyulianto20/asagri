@@ -49,9 +49,7 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
    - `AUTH_TOKEN` (sama dengan `WA_AUTH_TOKEN` di backend)
    - `BACKEND_URL` (URL backend dari langkah 2)
    - `BACKEND_TOKEN` (sama dengan `API_TOKEN` di backend)
-   - `SESSION_DIR=/app/session`
-3. Tambah **Volume** → mount ke `/app/session` (agar login WhatsApp tidak hilang saat restart).
-4. Generate domain → isi `WA_GATEWAY_URL` di backend dengan URL ini, lalu redeploy backend.
+3. Generate domain → isi `WA_GATEWAY_URL` di backend dengan URL ini, lalu redeploy backend.
 
 > **Catatan free tier:** aplikasi Railway "tidur" setelah idle. Backend tetap hidup karena
 > ESP32 mengirim data tiap 10 detik. Jika gateway tidur, notifikasi pertama mungkin
@@ -80,6 +78,9 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 - **Login admin** (username + password dari `ADMIN_USERNAME`/`ADMIN_PASSWORD`): dashboard tetap terbuka untuk umum,
   hanya halaman Pengaturan/Simulasi/Putuskan yang dilindungi. Sesi disimpan di tabel `admin_sessions`
   (token di-hash, berlaku 7 hari) dan token tersimpan di `localStorage` browser. Ada tombol **Keluar**.
+- **Status notifikasi** tampil di kartu WhatsApp Gateway (terkirim/gagal + penerima + waktu). Tombol
+  **Kirim Pesan Uji** (admin) untuk memverifikasi gateway & nomor penerima. Kegagalan kirim **tidak** mengunci
+  cooldown — akan dicoba lagi pada pembacaan berikutnya.
 
 ## 5. ESP32
 
@@ -130,6 +131,8 @@ cd frontend && npm run build
 | PUT | `/api/settings` | Simpan pengaturan admin (header `X-Admin-Token`) |
 | POST | `/api/simulate` | Simulasikan suhu/kelembaban paksa (header `X-Admin-Token`) |
 | GET | `/api/wa/status` | Status WhatsApp + QR |
+| GET | `/api/notify/status` | Status pengiriman notifikasi terakhir (ok/error/penerima) |
+| POST | `/api/wa/test` | Kirim pesan uji ke penerima (header `X-Admin-Token`) |
 | POST | `/api/wa/disconnect` | Putuskan WhatsApp & minta QR baru (header `X-Admin-Token`) |
 | POST | `/api/wa/session` | Cadangan session (dipakai gateway) |
 | GET | `/api/wa/session` | Ambil session cadangan (dipakai gateway) |

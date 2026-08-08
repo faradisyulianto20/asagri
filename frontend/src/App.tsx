@@ -10,12 +10,12 @@ import { InfoModal } from "./components/InfoModal";
 import { AdminLogin } from "./components/AdminLogin";
 import { AdminSettings } from "./components/AdminSettings";
 import { SimulatePage } from "./components/SimulatePage";
-import { disconnectWa, fetchMe, logoutAdmin, TOKEN_KEY, USERNAME_KEY } from "./api";
+import { disconnectWa, fetchMe, logoutAdmin, testWa, TOKEN_KEY, USERNAME_KEY } from "./api";
 
-type AdminAction = "settings" | "simulate" | "disconnect";
+type AdminAction = "settings" | "simulate" | "disconnect" | "test";
 
 export default function App() {
-  const { latest, history, wa, thresholds, error } = useDashboardData();
+  const { latest, history, wa, notify, thresholds, error } = useDashboardData();
   const [qrOpen, setQrOpen] = useState(false);
   const [qrAutoOpened, setQrAutoOpened] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
@@ -80,22 +80,25 @@ export default function App() {
     setInfoOpen(false);
   };
 
-  const runAdminAction = (action: AdminAction) => {
-    if (action === "settings") setSettingsOpen(true);
-    else if (action === "simulate") setSimulateOpen(true);
-    else if (token)
-      void disconnectWa(token)
-        .then(() => {})
-        .catch(() => {});
+  const runAdminAction = (action: AdminAction): Promise<void> => {
+    if (action === "settings") {
+      setSettingsOpen(true);
+      return Promise.resolve();
+    }
+    if (action === "simulate") {
+      setSimulateOpen(true);
+      return Promise.resolve();
+    }
+    if (!token) return Promise.reject(new Error("Perlu login admin"));
+    if (action === "disconnect") return disconnectWa(token).then(() => undefined);
+    return testWa(token).then(() => undefined);
   };
 
-  const requireAdmin = (action: AdminAction) => {
-    if (token) {
-      runAdminAction(action);
-    } else {
-      setPendingAction(action);
-      setLoginOpen(true);
-    }
+  const requireAdmin = (action: AdminAction): Promise<void> => {
+    if (token) return runAdminAction(action);
+    setPendingAction(action);
+    setLoginOpen(true);
+    return Promise.resolve();
   };
 
   const onLoginSuccess = (t: string, name: string) => {
@@ -105,7 +108,7 @@ export default function App() {
     setUsername(name);
     setLoginOpen(false);
     if (pendingAction) {
-      runAdminAction(pendingAction);
+      void runAdminAction(pendingAction);
       setPendingAction(null);
     }
   };
@@ -200,8 +203,11 @@ export default function App() {
           <StatusChips latest={latest} />
           <WaCard
             wa={wa}
+            notify={notify}
+            admin={Boolean(token)}
             onScan={() => setQrOpen(true)}
             onDisconnect={() => requireAdmin("disconnect")}
+            onTest={() => requireAdmin("test")}
           />
         </aside>
       </main>
