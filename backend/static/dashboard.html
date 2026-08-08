@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Asagri Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a; --card: #1e293b; --text: #e2e8f0; --muted: #94a3b8;
+      --ok: #22c55e; --warn: #f59e0b; --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text);
+      padding: 16px; padding-bottom: 40px; max-width: 520px; margin: 0 auto;
+    }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .sub { color: var(--muted); font-size: 12px; margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .card { background: var(--card); border-radius: 16px; padding: 16px; }
+    .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .big { font-size: 40px; font-weight: 700; line-height: 1.1; }
+    .unit { font-size: 16px; color: var(--muted); font-weight: 400; }
+    .full { grid-column: 1 / -1; }
+    .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
+      font-size: 13px; background: #0f172a; color: var(--muted);
+    }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+    .chip.on { color: var(--text); }
+    .chip.on .dot { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+    .chip.warn .dot { background: var(--warn); }
+    .chip.danger .dot { background: var(--danger); }
+    .wa { font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .wa .status { color: var(--muted); }
+    .wa .status.connected { color: var(--ok); }
+    .wa .status.error { color: var(--danger); }
+    .qr-box { text-align: center; }
+    .qr-box img { width: 200px; height: 200px; border-radius: 12px; margin-top: 8px; }
+    .err { color: var(--danger); font-size: 12px; margin-top: 4px; }
+    #chartBox { height: 260px; }
+  </style>
+</head>
+<body>
+  <h1>🌱 Asagri Monitor</h1>
+  <div class="sub" id="lastUpdate">Menunggu data…</div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="label">Suhu</div>
+      <div class="big" id="temp">–<span class="unit">°C</span></div>
+    </div>
+    <div class="card">
+      <div class="label">Kelembaban</div>
+      <div class="big" id="hum">–<span class="unit">%</span></div>
+    </div>
+
+    <div class="card full">
+      <div class="label">Status Alat</div>
+      <div class="chips" style="margin-top:10px;">
+        <span class="chip" id="fan"><span class="dot"></span>Kipas</span>
+        <span class="chip" id="humid"><span class="dot"></span>Humidifier</span>
+        <span class="chip" id="buzzer"><span class="dot"></span>Buzzer</span>
+      </div>
+    </div>
+
+    <div class="card full wa">
+      <div>
+        <div class="label">WhatsApp Gateway</div>
+        <div id="waDetail" class="err">…</div>
+      </div>
+      <div class="status" id="waStatus">menghubungi…</div>
+    </div>
+
+    <div class="card full">
+      <div class="label">Riwayat 24 Jam</div>
+      <canvas id="chart"></canvas>
+    </div>
+  </div>
+
+  <div class="qr-box" id="qrBox" style="display:none;"></div>
+
+  <script>
+    const chart = new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [
+          { label: 'Suhu °C', data: [], borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)', fill: true, tension: 0.3, yAxisID: 'y', pointRadius: 0 },
+          { label: 'Kelembaban %', data: [], borderColor: '#38bdf8', backgroundColor: 'rgba(56,189,248,0.1)', fill: true, tension: 0.3, yAxisID: 'y1', pointRadius: 0 },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { color: '#94a3b8' } } },
+        scales: {
+          x: { ticks: { color: '#94a3b8', maxTicksLimit: 8, maxRotation: 0 }, grid: { color: '#1e293b' } },
+          y: { position: 'left', ticks: { color: '#f59e0b' }, grid: { color: '#1e293b' } },
+          y1: { position: 'right', min: 0, max: 100, ticks: { color: '#38bdf8' }, grid: { drawOnChartArea: false } },
+        },
+      },
+    });
+
+    function setChip(id, on, warn, danger) {
+      const el = document.getElementById(id);
+      el.classList.remove('on', 'warn', 'danger');
+      if (danger) el.classList.add('danger');
+      else if (warn) el.classList.add('warn');
+      else if (on) el.classList.add('on');
+    }
+
+    async function refresh() {
+      try {
+        const [latestRes, historyRes, waRes] = await Promise.all([
+          fetch('/api/latest'), fetch('/api/history?hours=24'), fetch('/api/wa/status'),
+        ]);
+        const latest = await latestRes.json();
+        const history = await historyRes.json();
+        const wa = await waRes.json();
+
+        if (latest.available) {
+          document.getElementById('temp').innerHTML = latest.temperature.toFixed(1) + '<span class="unit">°C</span>';
+          document.getElementById('hum').innerHTML = latest.humidity.toFixed(1) + '<span class="unit">%</span>';
+          document.getElementById('lastUpdate').textContent =
+            'Update: ' + new Date(latest.created_at).toLocaleString('id-ID');
+          setChip('fan', latest.relay_fan);
+          setChip('humid', latest.relay_humidifier);
+          setChip('buzzer', latest.buzzer, false, latest.buzzer);
+        } else {
+          document.getElementById('lastUpdate').textContent = 'Belum ada data dari ESP32';
+        }
+
+        chart.data.labels = history.map(r => new Date(r.time).toLocaleTimeString('id-ID'));
+        chart.data.datasets[0].data = history.map(r => r.temperature);
+        chart.data.datasets[1].data = history.map(r => r.humidity);
+        chart.update();
+
+        const waStatus = document.getElementById('waStatus');
+        const waDetail = document.getElementById('waDetail');
+        waStatus.classList.remove('connected', 'error');
+        if (wa.connected) {
+          waStatus.textContent = 'Terhubung ✓';
+          waStatus.classList.add('connected');
+          waDetail.textContent = wa.number ? 'Nomor: ' + wa.number : '';
+          document.getElementById('qrBox').style.display = 'none';
+        } else {
+          waStatus.textContent = 'Belum terhubung';
+          waStatus.classList.add('error');
+          waDetail.textContent = wa.error || 'Scan QR di bawah untuk menghubungkan';
+          const qrBox = document.getElementById('qrBox');
+          if (wa.qr) {
+            qrBox.innerHTML = '<div class="label">Scan dengan WhatsApp</div><img src="' + wa.qr + '" />';
+            qrBox.style.display = 'block';
+          } else {
+            qrBox.style.display = 'none';
+          }
+        }
+      } catch (e) {
+        document.getElementById('lastUpdate').textContent = 'Gagal memuat: ' + e;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>
