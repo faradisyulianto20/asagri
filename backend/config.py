@@ -7,6 +7,9 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/postgres"
 
     api_token: str = "ganti-token-esp32"
+    admin_username: str = "asagri@gmail.com"
+    admin_password: str = "ppkoasagri"
+    session_days: int = 7
     wa_gateway_url: str = "http://localhost:4100"
     wa_auth_token: str = "ganti-token-gateway"
     whatsapp_to: str = "6281234567890"

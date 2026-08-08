@@ -24,13 +24,35 @@ app.post("/send", (req, res) => {
   const auth = req.headers.authorization || "";
   if (auth !== `Bearer ${AUTH_TOKEN}`) return sendJson(res, { error: "unauthorized" }, 401);
   const { to, message } = req.body || {};
-  if (!to || !message) return sendJson(res, { error: "to dan message wajib" }, 400);
+  const targets = Array.isArray(to) ? to.filter(Boolean) : [to];
+  if (targets.length === 0 || !message) return sendJson(res, { error: "to dan message wajib" }, 400);
   if (!status.connected) return sendJson(res, { error: "whatsapp belum terhubung" }, 503);
 
-  client
-    .sendMessage(to.includes("@g.us") ? to : `${to}@c.us`, String(message))
-    .then(() => sendJson(res, { status: "sent" }))
+  const recipients = targets.map((t) => (String(t).includes("@g.us") ? String(t) : `${t}@c.us`));
+  Promise.all(recipients.map((t) => client.sendMessage(t, String(message))))
+    .then(() => sendJson(res, { status: "sent", to: recipients.length }))
     .catch((err) => sendJson(res, { error: String(err) }, 500));
+});
+
+app.post("/disconnect", async (_req, res) => {
+  if (!client) return sendJson(res, { error: "client belum ada" }, 400);
+  try {
+    await client.logout();
+  } catch (err) {
+    console.error("[gateway] logout gagal:", err.message);
+  }
+  try {
+    await client.destroy();
+  } catch (err) {
+    console.error("[gateway] destroy gagal:", err.message);
+  }
+  client = null;
+  qrDataUrl = null;
+  lastSession = null;
+  status = { connected: false, registered: false, number: null, starting: false };
+  sendJson(res, { status: "disconnected" });
+  console.log("[gateway] sesi diputus, QR baru akan dibuat");
+  setTimeout(startClient, 1000);
 });
 
 app.get("/status", (_req, res) => {
@@ -52,23 +74,6 @@ async function backupSession(session) {
   } catch (err) {
     console.error("[gateway] gagal cadangkan session:", err.message);
   }
-}
-
-async function restoreSession() {
-  if (!BACKEND_URL || !BACKEND_TOKEN) return null;
-  try {
-    const resp = await fetch(`${BACKEND_URL}/api/wa/session`, {
-      headers: { "X-API-Token": BACKEND_TOKEN },
-    });
-    const data = await resp.json();
-    if (data.available) {
-      lastSession = JSON.parse(data.data);
-      return lastSession;
-    }
-  } catch (err) {
-    console.error("[gateway] gagal ambil session cadangan:", err.message);
-  }
-  return null;
 }
 
 async function startClient() {
@@ -110,17 +115,6 @@ async function startClient() {
     status.registered = false;
     console.log("[gateway] terputus:", reason);
   });
-
-  if (!lastSession) {
-    const restored = await restoreSession();
-    if (restored) {
-      try {
-        await client.restoreSession(restored);
-      } catch (err) {
-        console.error("[gateway] restore session gagal:", err.message);
-      }
-    }
-  }
 
   try {
     await client.initialize();

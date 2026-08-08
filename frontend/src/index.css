@@ -112,6 +112,184 @@ h1 {
   border-radius: 50%;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.btn-ghost {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-ghost:hover {
+  border-color: var(--primary);
+  color: #5d6a12;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, var(--danger), #c33);
+  color: #fff;
+  box-shadow: 0 8px 20px rgba(229, 72, 77, 0.3);
+}
+
+.btn-danger:hover {
+  box-shadow: 0 12px 26px rgba(229, 72, 77, 0.4);
+}
+
+.admin-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.link-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--danger);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* ---------- Modal luas & blok info ---------- */
+.modal-wide {
+  max-width: 560px;
+  text-align: left;
+}
+
+.modal-wide h2 {
+  text-align: center;
+}
+
+.info-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  margin: 0 0 14px;
+}
+
+.info-block h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.info-block p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.info-block ul {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* ---------- Form admin ---------- */
+.login-form,
+.settings-form {
+  display: grid;
+  gap: 14px;
+}
+
+.login-form input {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.settings-form .field,
+.sim-grid .field {
+  display: grid;
+  gap: 6px;
+}
+
+.field label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.field textarea,
+.field input[type="number"],
+.field input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-family: var(--font-body);
+  font-size: 13px;
+  resize: vertical;
+}
+
+.field input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary-strong);
+}
+
+.field .hint {
+  margin: 0;
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.field-ok {
+  margin: 0;
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.sim-grid {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+@media (min-width: 560px) {
+  .sim-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .pill-ok .dot {
   background: var(--ok);
   box-shadow: 0 0 0 4px rgba(124, 179, 66, 0.16);
@@ -454,11 +632,11 @@ h1 {
     padding: 12px;
   }
 
-  .header-status {
+  .header-actions {
     width: 100%;
   }
 
-  .pill {
+  .header-actions .pill {
     width: 100%;
     justify-content: center;
   }

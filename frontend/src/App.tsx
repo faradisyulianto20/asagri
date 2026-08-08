@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useDashboardData } from "./hooks/useDashboardData";
 import { HumidityCard } from "./components/HumidityCard";
 import { TempCard } from "./components/TempCard";
@@ -6,13 +6,60 @@ import { StatusChips } from "./components/StatusChips";
 import { WaCard } from "./components/WaCard";
 import { HistoryChart } from "./components/HistoryChart";
 import { QrModal } from "./components/QrModal";
+import { InfoModal } from "./components/InfoModal";
+import { AdminLogin } from "./components/AdminLogin";
+import { AdminSettings } from "./components/AdminSettings";
+import { SimulatePage } from "./components/SimulatePage";
+import { disconnectWa, fetchMe, logoutAdmin, TOKEN_KEY, USERNAME_KEY } from "./api";
+
+type AdminAction = "settings" | "simulate" | "disconnect";
 
 export default function App() {
-  const { latest, history, wa, error } = useDashboardData();
+  const { latest, history, wa, thresholds, error } = useDashboardData();
   const [qrOpen, setQrOpen] = useState(false);
   const [qrAutoOpened, setQrAutoOpened] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
+  const [token, setToken] = useState<string | null>(() =>
+    localStorage.getItem(TOKEN_KEY),
+  );
+  const [username, setUsername] = useState<string | null>(() =>
+    localStorage.getItem(USERNAME_KEY),
+  );
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState<AdminAction | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [simulateOpen, setSimulateOpen] = useState(false);
 
   const showQr = Boolean(wa && !wa.connected && wa.qr);
+
+  const clearAuth = useCallback(() => {
+    setToken(null);
+    setUsername(null);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USERNAME_KEY);
+  }, []);
+
+  useEffect(() => {
+    if (!localStorage.getItem("asagri_info_seen")) {
+      setInfoOpen(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener("asagri:unauthorized", clearAuth);
+    return () => window.removeEventListener("asagri:unauthorized", clearAuth);
+  }, [clearAuth]);
+
+  useEffect(() => {
+    if (token) {
+      fetchMe(token)
+        .then((me) => {
+          setUsername(me.username);
+          localStorage.setItem(USERNAME_KEY, me.username);
+        })
+        .catch(() => {});
+    }
+  }, [token]);
 
   useEffect(() => {
     if (showQr && !qrAutoOpened) {
@@ -20,6 +67,59 @@ export default function App() {
       setQrOpen(true);
     }
   }, [showQr, qrAutoOpened]);
+
+  useEffect(() => {
+    if (wa?.connected && qrAutoOpened) {
+      setQrAutoOpened(false);
+      setQrOpen(false);
+    }
+  }, [wa?.connected, qrAutoOpened]);
+
+  const closeInfo = () => {
+    localStorage.setItem("asagri_info_seen", "1");
+    setInfoOpen(false);
+  };
+
+  const runAdminAction = (action: AdminAction) => {
+    if (action === "settings") setSettingsOpen(true);
+    else if (action === "simulate") setSimulateOpen(true);
+    else if (token)
+      void disconnectWa(token)
+        .then(() => {})
+        .catch(() => {});
+  };
+
+  const requireAdmin = (action: AdminAction) => {
+    if (token) {
+      runAdminAction(action);
+    } else {
+      setPendingAction(action);
+      setLoginOpen(true);
+    }
+  };
+
+  const onLoginSuccess = (t: string, name: string) => {
+    localStorage.setItem(TOKEN_KEY, t);
+    localStorage.setItem(USERNAME_KEY, name);
+    setToken(t);
+    setUsername(name);
+    setLoginOpen(false);
+    if (pendingAction) {
+      runAdminAction(pendingAction);
+      setPendingAction(null);
+    }
+  };
+
+  const onLogout = async () => {
+    if (token) {
+      try {
+        await logoutAdmin(token);
+      } catch {
+        /* tetap logout lokal */
+      }
+    }
+    clearAuth();
+  };
 
   const lastUpdate = latest?.available
     ? `Update: ${new Date(latest.created_at as string).toLocaleString("id-ID")}`
@@ -35,13 +135,50 @@ export default function App() {
             <p className="sub">{lastUpdate}</p>
           </div>
         </div>
-        <div className="header-status">
+        <div className="header-actions">
           <span
             className={`pill ${wa?.connected ? "pill-ok" : "pill-warn"}`}
           >
             <span className="dot" />
             {wa?.connected ? "WhatsApp terhubung" : "WhatsApp belum terhubung"}
           </span>
+          <button
+            className="btn-ghost"
+            type="button"
+            onClick={() => setInfoOpen(true)}
+          >
+            Bantuan
+          </button>
+          <button
+            className="btn-ghost"
+            type="button"
+            onClick={() => requireAdmin("settings")}
+          >
+            Pengaturan
+          </button>
+          <button
+            className="btn-ghost"
+            type="button"
+            onClick={() => requireAdmin("simulate")}
+          >
+            Simulasi
+          </button>
+          {username ? (
+            <span className="admin-user">
+              Admin: {username}
+              <button className="link-btn" type="button" onClick={onLogout}>
+                Keluar
+              </button>
+            </span>
+          ) : (
+            <button
+              className="btn-ghost"
+              type="button"
+              onClick={() => setLoginOpen(true)}
+            >
+              Masuk Admin
+            </button>
+          )}
         </div>
       </header>
 
@@ -61,12 +198,37 @@ export default function App() {
 
         <aside className="side-col">
           <StatusChips latest={latest} />
-          <WaCard wa={wa} onScan={() => setQrOpen(true)} />
+          <WaCard
+            wa={wa}
+            onScan={() => setQrOpen(true)}
+            onDisconnect={() => requireAdmin("disconnect")}
+          />
         </aside>
       </main>
 
       {qrOpen && showQr && wa?.qr && (
         <QrModal qr={wa.qr} onClose={() => setQrOpen(false)} />
+      )}
+      {infoOpen && <InfoModal onClose={closeInfo} />}
+      {loginOpen && (
+        <AdminLogin
+          onSuccess={onLoginSuccess}
+          onClose={() => {
+            setLoginOpen(false);
+            setPendingAction(null);
+          }}
+        />
+      )}
+      {settingsOpen && token && (
+        <AdminSettings token={token} onClose={() => setSettingsOpen(false)} />
+      )}
+      {simulateOpen && token && (
+        <SimulatePage
+          token={token}
+          thresholds={thresholds}
+          latest={latest}
+          onClose={() => setSimulateOpen(false)}
+        />
       )}
     </div>
   );

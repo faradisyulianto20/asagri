@@ -3,9 +3,11 @@ import type { WaStatus } from "../api";
 export function WaCard({
   wa,
   onScan,
+  onDisconnect,
 }: {
   wa: WaStatus | null;
   onScan: () => void;
+  onDisconnect: () => void;
 }) {
   const connected = Boolean(wa?.connected);
   const detail = connected
@@ -31,7 +33,15 @@ export function WaCard({
           {badge}
         </span>
       </div>
-      {!connected && (
+      {connected ? (
+        <button
+          className="btn btn-danger"
+          type="button"
+          onClick={onDisconnect}
+        >
+          Putuskan &amp; Ganti Nomor
+        </button>
+      ) : (
         <button className="btn" type="button" onClick={onScan}>
           Tampilkan QR
         </button>

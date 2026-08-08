@@ -15,6 +15,7 @@ export function StatusChips({ latest }: { latest: LatestData | null }) {
     { label: "Relay 4", on: latest?.relay_4 },
     { label: "Buzzer", danger: latest?.buzzer },
     { label: "Sensor Error", warn: latest?.sensor_error },
+    { label: "Data Simulasi", warn: latest?.source === "simulasi" },
   ];
 
   return (

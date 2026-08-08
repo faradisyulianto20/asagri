@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -11,8 +11,16 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from database import get_db
-from models import SensorReading, WaSession
+from auth import create_session, delete_session, get_user_by_token, seed_admin, verify_password
+from models import SensorReading, User, WaSession
 from notifier import notifier
+from settings_store import (
+    EDITABLE_KEYS,
+    get_settings,
+    seed_settings,
+    thresholds,
+    update_settings,
+)
 
 router = APIRouter()
 
@@ -20,6 +28,50 @@ router = APIRouter()
 def _check_token(x_api_token: str | None = Header(default=None)) -> None:
     if x_api_token != settings.api_token:
         raise HTTPException(status_code=401, detail="Token tidak valid")
+
+
+def _check_admin(
+    x_admin_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> User:
+    user = get_user_by_token(db, x_admin_token)
+    if user is None:
+        raise HTTPException(
+            status_code=401, detail="Sesi admin tidak valid atau kedaluwarsa"
+        )
+    return user
+
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
+
+@router.post("/api/auth/login")
+def login(payload: LoginPayload, db: Session = Depends(get_db)) -> dict:
+    user = db.scalar(select(User).where(User.username == payload.username))
+    if user is None or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Username atau password salah")
+    token = create_session(db, user)
+    return {"token": token, "username": user.username}
+
+
+@router.post("/api/auth/logout", dependencies=[Depends(_check_admin)])
+def logout(
+    x_admin_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    delete_session(db, x_admin_token)
+    return {"status": "ok"}
+
+
+@router.get("/api/auth/me", dependencies=[Depends(_check_admin)])
+def me(
+    x_admin_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    user = get_user_by_token(db, x_admin_token)
+    return {"username": user.username}
 
 
 class SensorPayload(BaseModel):
@@ -33,13 +85,26 @@ class SensorPayload(BaseModel):
     sensor_error: bool = False
 
 
+class SimulatePayload(BaseModel):
+    temperature: float = Field(..., ge=-10, le=70)
+    humidity: float = Field(..., ge=0, le=100)
+
+
+class SettingsPayload(BaseModel):
+    whatsapp_to: str | None = None
+    msg_fan_on: str | None = None
+    msg_humid_on: str | None = None
+    msg_extreme: str | None = None
+    cooldown_minutes: float | None = Field(default=None, ge=0)
+
+
 @router.post("/api/sensor", dependencies=[Depends(_check_token)])
 def receive_sensor(payload: SensorPayload, db: Session = Depends(get_db)) -> dict:
     reading = SensorReading(**payload.model_dump())
     db.add(reading)
     db.commit()
     db.refresh(reading)
-    notifier.handle(reading)
+    notifier.handle(reading, db)
     return {"status": "ok", "id": reading.id}
 
 
@@ -58,6 +123,7 @@ def latest(db: Session = Depends(get_db)) -> dict:
         "relay_4": row.relay_4,
         "buzzer": row.buzzer,
         "sensor_error": row.sensor_error,
+        "source": row.source,
         "created_at": row.created_at.isoformat(),
     }
 
@@ -79,9 +145,81 @@ def history(
             "humidity": r.humidity,
             "relay_fan": r.relay_fan,
             "relay_humidifier": r.relay_humidifier,
+            "source": r.source,
         }
         for r in rows
     ]
+
+
+@router.get("/api/thresholds")
+def get_thresholds() -> dict:
+    return thresholds()
+
+
+@router.get("/api/settings", dependencies=[Depends(_check_admin)])
+def admin_settings(db: Session = Depends(get_db)) -> dict:
+    data = get_settings(db)
+    data["thresholds"] = thresholds()
+    return data
+
+
+@router.put("/api/settings", dependencies=[Depends(_check_admin)])
+def update_admin_settings(
+    payload: SettingsPayload, db: Session = Depends(get_db)
+) -> dict:
+    data = payload.model_dump(exclude_unset=True)
+    unknown = set(data) - EDITABLE_KEYS
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Kunci tidak dikenal: {unknown}")
+    updated = update_settings(db, data)
+    updated["thresholds"] = thresholds()
+    return updated
+
+
+@router.post("/api/simulate", dependencies=[Depends(_check_admin)])
+def simulate(payload: SimulatePayload, db: Session = Depends(get_db)) -> dict:
+    t = payload.temperature
+    h = payload.humidity
+    latest_row = db.scalar(
+        select(SensorReading).order_by(desc(SensorReading.id)).limit(1)
+    )
+    prev_fan = latest_row.relay_fan if latest_row else False
+    prev_hum = latest_row.relay_humidifier if latest_row else False
+
+    fan = True if t >= settings.threshold_fan_on else (
+        False if t <= settings.threshold_fan_off else prev_fan
+    )
+    humidifier = True if h <= settings.threshold_humid_on else (
+        False if h >= settings.threshold_humid_off else prev_hum
+    )
+    buzzer = t > settings.extreme_temp or h < settings.extreme_humidity
+
+    reading = SensorReading(
+        temperature=t,
+        humidity=h,
+        relay_fan=fan,
+        relay_humidifier=humidifier,
+        relay_3=False,
+        relay_4=False,
+        buzzer=buzzer,
+        sensor_error=False,
+        source="simulasi",
+    )
+    db.add(reading)
+    db.commit()
+    db.refresh(reading)
+    notifier.handle(reading, db)
+
+    return {
+        "id": reading.id,
+        "temperature": t,
+        "humidity": h,
+        "relay_fan": fan,
+        "relay_humidifier": humidifier,
+        "buzzer": buzzer,
+        "source": reading.source,
+        "created_at": reading.created_at.isoformat(),
+    }
 
 
 @router.get("/api/wa/status")
@@ -93,6 +231,18 @@ def wa_status() -> dict:
         return resp.json()
     except httpx.HTTPError as exc:
         return {"connected": False, "error": f"gateway tidak terjangkau: {exc}"}
+
+
+@router.post("/api/wa/disconnect", dependencies=[Depends(_check_admin)])
+def wa_disconnect() -> dict:
+    try:
+        resp = httpx.post(
+            f"{settings.wa_gateway_url.rstrip('/')}/disconnect", timeout=15
+        )
+        resp.raise_for_status()
+        return resp.json()
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"gateway error: {exc}")
 
 
 @router.post("/api/wa/session", dependencies=[Depends(_check_token)])
@@ -141,10 +291,37 @@ def dashboard() -> FileResponse:
     )
 
 
+def _migrate(engine) -> None:
+    try:
+        with engine.begin() as conn:
+            if conn.dialect.name == "postgresql":
+                conn.exec_driver_sql(
+                    "ALTER TABLE sensor_readings "
+                    "ADD COLUMN IF NOT EXISTS source VARCHAR(16) NOT NULL DEFAULT 'esp32'"
+                )
+            else:
+                cols = conn.exec_driver_sql("PRAGMA table_info(sensor_readings)").fetchall()
+                names = {row[1] for row in cols}
+                if "source" not in names:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE sensor_readings "
+                        "ADD COLUMN source VARCHAR(16) NOT NULL DEFAULT 'esp32'"
+                    )
+    except Exception as exc:  # noqa: BLE001
+        print(f"[backend] migrasi dilewati: {exc}")
+
+
 def create_app() -> FastAPI:
     from database import Base, engine
 
     Base.metadata.create_all(bind=engine)
+    _migrate(engine)
+
+    from database import SessionLocal
+
+    with SessionLocal() as db:
+        seed_settings(db)
+        seed_admin(db)
 
     app = FastAPI(title="Asagri IoT Monitor")
     app.include_router(router)
