@@ -4,10 +4,12 @@ from pathlib import Path
 import httpx
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.staticfiles import StaticFiles
+from starlette.types import Scope
 
 from config import settings
 from database import get_db
@@ -24,6 +26,18 @@ from settings_store import (
 )
 
 router = APIRouter()
+
+
+class SPAStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope: Scope) -> FileResponse:
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404:
+                return await super().get_response("index.html", scope)
+            raise
 
 
 def _check_token(x_api_token: str | None = Header(default=None)) -> None:
@@ -495,19 +509,6 @@ def dashboard() -> FileResponse:
     )
 
 
-@router.get("/{full_path:path}")
-def spa_fallback(full_path: str) -> FileResponse:
-    if full_path.startswith("api/"):
-        raise HTTPException(status_code=404, detail="Not Found")
-    index = _frontend_dist() / "index.html"
-    if index.is_file():
-        return FileResponse(index)
-    raise HTTPException(
-        status_code=404,
-        detail="Frontend belum di-build. Jalankan: cd frontend && npm run build",
-    )
-
-
 def _migrate(engine) -> None:
     try:
         with engine.begin() as conn:
@@ -555,7 +556,7 @@ def create_app() -> FastAPI:
 
     dist = _frontend_dist()
     if dist.is_dir():
-        app.mount("/", StaticFiles(directory=str(dist), html=True), name="static")
+        app.mount("/", SPAStaticFiles(directory=str(dist), html=True), name="static")
     else:
         print("[backend] frontend dist tidak ditemukan, hanya mode API")
 
