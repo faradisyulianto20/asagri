@@ -1,5 +1,15 @@
 import { useState } from "react";
+import { MessageSquareText, QrCode, Unplug, CheckCircle2, XCircle } from "lucide-react";
 import type { NotifyStatus, WaStatus } from "../api";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export function WaCard({
   wa,
@@ -34,7 +44,7 @@ export function WaCard({
 
   const last = notify?.last;
   const lastText = last
-    ? `${last.ok ? "Terkirim ✓" : `Gagal: ${last.error || "error"}`} · ${
+    ? `${last.ok ? "Terkirim" : `Gagal: ${last.error || "error"}`} · ${
         last.to?.length || 0
       } nomor · ${new Date(last.at).toLocaleTimeString("id-ID")}`
     : "Belum ada pengiriman tercatat";
@@ -65,44 +75,79 @@ export function WaCard({
   };
 
   return (
-    <div className="card wa">
-      <div className="wa-head">
-        <div>
-          <h2>WhatsApp Gateway</h2>
-          <p className="wa-detail">{detail}</p>
-          <p className={`wa-detail ${last && !last.ok ? "delivery-err" : ""}`}>
-            Notifikasi terakhir: {lastText}
+    <Card>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <CardTitle>WhatsApp Gateway</CardTitle>
+            <CardDescription className="mt-1">{detail}</CardDescription>
+            <CardDescription
+              className={
+                last && !last.ok
+                  ? "mt-1 font-semibold text-destructive"
+                  : "mt-1"
+              }
+            >
+              Notifikasi terakhir: {lastText}
+            </CardDescription>
+          </div>
+          <Badge
+            className={
+              connected
+                ? "shrink-0 bg-primary/10 text-primary"
+                : "shrink-0 bg-accent/10 text-accent"
+            }
+          >
+            {connected ? (
+              <CheckCircle2 className="size-3" />
+            ) : (
+              <XCircle className="size-3" />
+            )}
+            {badge}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-2">
+        {connected ? (
+          <>
+            <Button
+              variant="default"
+              className="h-10 w-full cursor-pointer"
+              type="button"
+              onClick={() => run("test")}
+              disabled={busy !== null}
+            >
+              <MessageSquareText />
+              {busy === "test" ? "Mengirim…" : "Kirim Pesan Uji"}
+            </Button>
+            <Button
+              variant="destructive"
+              className="h-10 w-full cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              type="button"
+              onClick={() => run("disconnect")}
+              disabled={busy !== null}
+            >
+              <Unplug />
+              {busy === "disconnect" ? "Memutus…" : "Putuskan & Ganti Nomor"}
+            </Button>
+          </>
+        ) : (
+          <Button
+            variant="default"
+            className="h-10 w-full cursor-pointer"
+            type="button"
+            onClick={onScan}
+          >
+            <QrCode />
+            Tampilkan QR
+          </Button>
+        )}
+        {feedback && (
+          <p className="mt-1 text-xs font-semibold text-primary">
+            {feedback}
           </p>
-        </div>
-        <span className={`badge ${connected ? "badge-ok" : "badge-warn"}`}>
-          {badge}
-        </span>
-      </div>
-      {connected ? (
-        <div className="wa-actions">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => run("test")}
-            disabled={busy !== null}
-          >
-            {busy === "test" ? "Mengirim…" : "Kirim Pesan Uji"}
-          </button>
-          <button
-            className="btn btn-danger"
-            type="button"
-            onClick={() => run("disconnect")}
-            disabled={busy !== null}
-          >
-            {busy === "disconnect" ? "Memutus…" : "Putuskan & Ganti Nomor"}
-          </button>
-        </div>
-      ) : (
-        <button className="btn" type="button" onClick={onScan}>
-          Tampilkan QR
-        </button>
-      )}
-      {feedback && <p className="wa-feedback">{feedback}</p>}
-    </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }

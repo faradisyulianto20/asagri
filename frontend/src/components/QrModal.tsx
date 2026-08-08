@@ -1,4 +1,11 @@
-import { useEffect } from "react";
+import { QrCode, Smartphone } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export function QrModal({
   qr,
@@ -7,34 +14,30 @@ export function QrModal({
   qr: string;
   onClose: () => void;
 }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="modal-close"
-          type="button"
-          onClick={onClose}
-          aria-label="Tutup"
-        >
-          ✕
-        </button>
-        <h2>Scan dengan WhatsApp</h2>
-        <p className="modal-sub">
-          Buka WhatsApp → Menu → Perangkat tertaut → Tautkan perangkat
-        </p>
-        <img src={qr} alt="WhatsApp QR Code" />
-        <p className="modal-note">
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md text-center">
+        <DialogHeader className="items-center text-center">
+          <span className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <QrCode className="size-6" />
+          </span>
+          <DialogTitle className="mt-1 text-lg">Scan dengan WhatsApp</DialogTitle>
+          <DialogDescription className="mx-auto max-w-xs">
+            Buka WhatsApp → Menu → Perangkat tertaut → Tautkan perangkat
+          </DialogDescription>
+        </DialogHeader>
+        <div className="mx-auto w-fit rounded-2xl border border-border bg-white p-3 shadow-sm">
+          <img
+            src={qr}
+            alt="WhatsApp QR Code"
+            className="h-auto w-72 max-w-full rounded-xl"
+          />
+        </div>
+        <p className="mx-auto max-w-xs flex items-center justify-center gap-2 text-xs text-muted-foreground">
+          <Smartphone className="size-4 shrink-0" />
           QR berlaku sementara — tutup &amp; buka lagi jika sudah kedaluwarsa.
         </p>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

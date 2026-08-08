@@ -1,9 +1,22 @@
 import { useEffect, useState } from "react";
+import type { FormEvent } from "react";
+import { Loader2, Save } from "lucide-react";
 import {
   fetchAdminSettings,
   updateAdminSettings,
 } from "../api";
 import type { AdminSettings as AdminSettingsData } from "../api";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 const PLACEHOLDER_NUMBERS = ["6281234567890"];
 
@@ -29,22 +42,12 @@ export function AdminSettings({
     };
   }, [token]);
 
-  if (!form) {
-    return (
-      <div className="overlay" onClick={onClose}>
-        <div className="modal modal-wide">
-          <p className="modal-sub">{error || "Memuat pengaturan…"}</p>
-        </div>
-      </div>
-    );
-  }
-
   const set = (key: keyof AdminSettingsData, value: string) =>
     setForm((f) => (f ? { ...f, [key]: value } : f));
 
-  const save = async (e: React.FormEvent) => {
+  const save = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !form) return;
     setBusy(true);
     setError(null);
     setSaved(false);
@@ -65,122 +68,162 @@ export function AdminSettings({
     }
   };
 
+  if (!form) {
+    return (
+      <Dialog open onOpenChange={(open) => !open && onClose()}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Pengaturan Admin</DialogTitle>
+            <DialogDescription>
+              {error || "Memuat pengaturan…"}
+            </DialogDescription>
+          </DialogHeader>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   const th = form.thresholds;
   const hasPlaceholder = PLACEHOLDER_NUMBERS.some((n) =>
     form.whatsapp_to.split(",").map((x) => x.trim()).includes(n),
   );
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="modal-close"
-          type="button"
-          onClick={onClose}
-          aria-label="Tutup"
-        >
-          ✕
-        </button>
-        <h2>Pengaturan Admin</h2>
-        <p className="modal-sub">
-          Pesan notifikasi &amp; daftar penerima WhatsApp.
-        </p>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Pengaturan Admin</DialogTitle>
+          <DialogDescription>
+            Pesan notifikasi &amp; daftar penerima WhatsApp.
+          </DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={save} className="settings-form">
-          <div className="field">
-            <label>Nomor penerima (pisahkan dengan koma)</label>
-            <textarea
+        <form onSubmit={save} className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="whatsapp-to">
+              Nomor penerima (pisahkan dengan koma)
+            </Label>
+            <Textarea
+              id="whatsapp-to"
               rows={2}
               value={form.whatsapp_to}
               onChange={(e) => set("whatsapp_to", e.target.value)}
               placeholder="6281111111111, 6282222222222"
             />
-            <p className="hint">
+            <p className="text-xs text-muted-foreground">
               Format internasional tanpa tanda + dan tanpa awalan 0.
             </p>
             {hasPlaceholder && (
-              <p className="field-error">
+              <p className="text-xs font-semibold text-destructive">
                 ⚠️ Masih ada nomor default/placeholder (6281234567890). Ganti
                 dengan nomor WhatsApp asli agar notifikasi sampai.
               </p>
             )}
           </div>
 
-          <div className="field">
-            <label>Pesan kipas menyala</label>
-            <textarea
+          <div className="grid gap-2">
+            <Label htmlFor="msg-fan-on">Pesan kipas menyala</Label>
+            <Textarea
+              id="msg-fan-on"
               rows={3}
               value={form.msg_fan_on}
               onChange={(e) => set("msg_fan_on", e.target.value)}
             />
-            <p className="hint">
+            <p className="text-xs text-muted-foreground">
               Bisa pakai placeholder: {"{temperature}"} dan {"{threshold}"}
             </p>
           </div>
 
-          <div className="field">
-            <label>Pesan humidifier menyala</label>
-            <textarea
+          <div className="grid gap-2">
+            <Label htmlFor="msg-humid-on">Pesan humidifier menyala</Label>
+            <Textarea
+              id="msg-humid-on"
               rows={3}
               value={form.msg_humid_on}
               onChange={(e) => set("msg_humid_on", e.target.value)}
             />
-            <p className="hint">
+            <p className="text-xs text-muted-foreground">
               Bisa pakai placeholder: {"{humidity}"} dan {"{threshold}"}
             </p>
           </div>
 
-          <div className="field">
-            <label>Pesan kondisi ekstrem</label>
-            <textarea
+          <div className="grid gap-2">
+            <Label htmlFor="msg-extreme">Pesan kondisi ekstrem</Label>
+            <Textarea
+              id="msg-extreme"
               rows={3}
               value={form.msg_extreme}
               onChange={(e) => set("msg_extreme", e.target.value)}
             />
-            <p className="hint">
+            <p className="text-xs text-muted-foreground">
               Bisa pakai placeholder: {"{temperature}"} dan {"{humidity}"}
             </p>
           </div>
 
-          <div className="field">
-            <label>Jeda antar notifikasi (menit)</label>
-            <input
+          <div className="grid gap-2">
+            <Label htmlFor="cooldown-minutes">Jeda antar notifikasi (menit)</Label>
+            <Input
+              id="cooldown-minutes"
               type="number"
               min={0}
               step={1}
+              className="h-10"
               value={form.cooldown_minutes}
               onChange={(e) => set("cooldown_minutes", e.target.value)}
             />
           </div>
 
-          <div className="info-block">
-            <h3>Ambang tetap (dari ESP32)</h3>
-            <ul>
+          <div className="rounded-2xl border border-border bg-muted/30 p-4">
+            <h3 className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              Ambang tetap (dari ESP32)
+            </h3>
+            <ul className="list-disc space-y-1 pl-5 text-[13px]">
               <li>
                 Kipas: ON saat ≥ {th.fan_on}°C, OFF saat ≤ {th.fan_off}°C
               </li>
               <li>
-                Humidifier: ON saat ≤ {th.humid_on}%, OFF saat ≥ {th.humid_off}%
+                Humidifier: ON saat ≤ {th.humid_on}%, OFF saat ≥{" "}
+                {th.humid_off}%
               </li>
               <li>
                 Ekstrem: suhu &gt; {th.extreme_temp}°C atau kelembaban &lt;{" "}
                 {th.extreme_humidity}%
               </li>
             </ul>
-            <p className="hint">
+            <p className="mt-2 text-xs text-muted-foreground">
               Ambang dikendalikan firmware ESP32 dan tidak dapat diubah dari
               sini.
             </p>
           </div>
 
-          {error && <p className="field-error">{error}</p>}
-          {saved && <p className="field-ok">Pengaturan tersimpan ✓</p>}
+          {error && (
+            <p className="text-sm font-semibold text-destructive">{error}</p>
+          )}
+          {saved && (
+            <p className="text-sm font-semibold text-primary">
+              Pengaturan tersimpan ✓
+            </p>
+          )}
 
-          <button className="btn" type="submit" disabled={busy}>
-            {busy ? "Menyimpan…" : "Simpan"}
-          </button>
+          <Button
+            type="submit"
+            className="h-10 w-full cursor-pointer"
+            disabled={busy}
+          >
+            {busy ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Menyimpan…
+              </>
+            ) : (
+              <>
+                <Save />
+                Simpan
+              </>
+            )}
+          </Button>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

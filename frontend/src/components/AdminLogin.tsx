@@ -1,5 +1,17 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
+import { Loader2, Lock, ShieldCheck } from "lucide-react";
 import { loginAdmin } from "../api";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 export function AdminLogin({
   onSuccess,
@@ -13,7 +25,7 @@ export function AdminLogin({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
     setBusy(true);
@@ -33,44 +45,67 @@ export function AdminLogin({
   };
 
   return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <button
-          className="modal-close"
-          type="button"
-          onClick={onClose}
-          aria-label="Tutup"
-        >
-          ✕
-        </button>
-        <h2>Login Admin</h2>
-        <p className="modal-sub">
-          Halaman ini hanya untuk admin. Masukkan username &amp; password.
-        </p>
-        <form onSubmit={submit} className="login-form">
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="Username (email)"
-            autoComplete="username"
-            autoFocus
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader className="items-center text-center">
+          <span className="grid size-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+            <Lock className="size-6" />
+          </span>
+          <DialogTitle className="mt-1 text-lg">Login Admin</DialogTitle>
+          <DialogDescription>
+            Halaman ini hanya untuk admin. Masukkan username &amp; password.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-4">
+          <div className="grid gap-2">
+            <Label htmlFor="admin-username">Username (email)</Label>
+            <Input
+              id="admin-username"
+              type="text"
+              className="h-10"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="asagri@gmail.com"
+              autoComplete="username"
+              autoFocus
+              disabled={busy}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="admin-password">Password</Label>
+            <Input
+              id="admin-password"
+              type="password"
+              className="h-10"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              disabled={busy}
+            />
+          </div>
+          {error && (
+            <p className="text-sm font-semibold text-destructive">{error}</p>
+          )}
+          <Button
+            type="submit"
+            className="h-10 w-full cursor-pointer"
             disabled={busy}
-          />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Password"
-            autoComplete="current-password"
-            disabled={busy}
-          />
-          {error && <p className="field-error">{error}</p>}
-          <button className="btn" type="submit" disabled={busy}>
-            {busy ? "Memeriksa…" : "Masuk"}
-          </button>
+          >
+            {busy ? (
+              <>
+                <Loader2 className="animate-spin" />
+                Memeriksa…
+              </>
+            ) : (
+              <>
+                <ShieldCheck />
+                Masuk
+              </>
+            )}
+          </Button>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }
