@@ -96,24 +96,31 @@ app.post("/send", (req, res) => {
     .catch((err) => sendJson(res, { error: String(err) }, 500));
 });
 
-app.post("/disconnect", async (_req, res) => {
-  if (!client) return sendJson(res, { error: "client belum ada" }, 400);
-  try {
-    await client.logout();
-  } catch (err) {
-    console.error("[gateway] logout gagal:", err.message);
-  }
-  try {
-    await client.destroy();
-  } catch (err) {
-    console.error("[gateway] destroy gagal:", err.message);
-  }
+app.post("/disconnect", (req, res) => {
+  const auth = req.headers.authorization || "";
+  if (auth !== `Bearer ${AUTH_TOKEN}`) return sendJson(res, { error: "unauthorized" }, 401);
+
+  const current = client;
   client = null;
   qrDataUrl = null;
   status = { connected: false, registered: false, number: null, starting: false };
+
+  // Balas seketika; pembersihan & restart dijalankan di background
   sendJson(res, { status: "disconnected" });
   console.log("[gateway] sesi diputus, QR baru akan dibuat");
-  setTimeout(startClient, 1000);
+
+  const bounded = (promise) =>
+    Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
+
+  if (current) {
+    bounded(current.logout().catch((err) => console.error("[gateway] logout gagal:", err.message)))
+      .finally(() =>
+        bounded(current.destroy().catch((err) => console.error("[gateway] destroy gagal:", err.message)))
+      )
+      .finally(() => startClient());
+  } else {
+    setTimeout(startClient, 1000);
+  }
 });
 
 app.get("/status", (_req, res) => {

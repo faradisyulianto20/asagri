@@ -12,11 +12,12 @@ from sqlalchemy.orm import Session
 from config import settings
 from database import get_db
 from auth import create_session, delete_session, get_user_by_token, seed_admin, verify_password
-from models import SensorReading, User, WaSession
+from models import SensorReading, User, WaNumberRequest, WaSession
 from notifier import notifier
 from settings_store import (
     EDITABLE_KEYS,
     get_settings,
+    recipients,
     seed_settings,
     thresholds,
     update_settings,
@@ -245,12 +246,25 @@ def wa_status() -> dict:
 def wa_disconnect() -> dict:
     try:
         resp = httpx.post(
-            f"{settings.wa_gateway_url.rstrip('/')}/disconnect", timeout=15
+            f"{settings.wa_gateway_url.rstrip('/')}/disconnect",
+            headers={"Authorization": f"Bearer {settings.wa_auth_token}"},
+            timeout=30,
         )
-        resp.raise_for_status()
-        return resp.json()
+    except (httpx.ConnectTimeout, httpx.ReadTimeout):
+        raise HTTPException(
+            status_code=503,
+            detail="Gateway WhatsApp tidak merespons (mungkin sedang tidur atau menyalakan ulang)",
+        )
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"gateway error: {exc}")
+        raise HTTPException(
+            status_code=503, detail=f"Gateway WhatsApp tidak terjangkau: {exc}"
+        )
+    if resp.status_code >= 400:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gateway menolak permintaan: HTTP {resp.status_code}",
+        )
+    return resp.json()
 
 
 @router.post("/api/wa/test", dependencies=[Depends(_check_admin)])
@@ -305,6 +319,159 @@ def delete_wa_session(db: Session = Depends(get_db)) -> dict:
     return {"status": "ok"}
 
 
+class NumberRequestPayload(BaseModel):
+    name: str
+    number: str
+
+
+def _normalize_number(number: str) -> str:
+    cleaned = number.replace(" ", "").replace("-", "")
+    if cleaned.startswith("+"):
+        cleaned = cleaned[1:]
+    if cleaned.startswith("0"):
+        cleaned = "62" + cleaned[1:]
+    return cleaned
+
+
+def _valid_number(number: str) -> bool:
+    return number.startswith("628") and len(number) >= 10 and len(number) <= 15 and number.isdigit()
+
+
+@router.post("/api/wa/request")
+def submit_number_request(
+    payload: NumberRequestPayload, db: Session = Depends(get_db)
+) -> dict:
+    name = payload.name.strip()
+    number = _normalize_number(payload.number)
+    if not name:
+        raise HTTPException(status_code=400, detail="Nama tidak boleh kosong")
+    if not _valid_number(number):
+        raise HTTPException(
+            status_code=400,
+            detail="Nomor tidak valid. Gunakan format 628xxx tanpa + dan tanpa awalan 0.",
+        )
+
+    row = db.scalar(
+        select(WaNumberRequest).where(WaNumberRequest.number == number)
+    )
+    if row is not None and row.status == "approved":
+        return {
+            "status": "approved",
+            "name": row.name,
+            "number": row.number,
+            "message": "Nomor ini sudah terdaftar sebagai penerima notifikasi.",
+        }
+    if row is None:
+        row = WaNumberRequest(name=name, number=number, status="pending")
+        db.add(row)
+    else:
+        row.name = name
+        row.status = "pending"
+        row.decided_at = None
+        row.decided_by = None
+    db.commit()
+    return {
+        "status": "pending",
+        "name": row.name,
+        "number": row.number,
+        "message": "Permintaan dikirim dan menunggu persetujuan admin.",
+    }
+
+
+@router.get("/api/wa/request/status")
+def number_request_status(number: str, db: Session = Depends(get_db)) -> dict:
+    normalized = _normalize_number(number)
+    if not normalized:
+        return {"status": "none", "number": number}
+    row = db.scalar(
+        select(WaNumberRequest).where(WaNumberRequest.number == normalized)
+    )
+    if row is None:
+        return {"status": "none", "number": number}
+    return {
+        "status": row.status,
+        "name": row.name,
+        "number": row.number,
+        "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+    }
+
+
+def _request_dict(row: WaNumberRequest) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "number": row.number,
+        "status": row.status,
+        "created_at": row.created_at.isoformat(),
+        "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+        "decided_by": row.decided_by,
+    }
+
+
+@router.get("/api/wa/requests", dependencies=[Depends(_check_admin)])
+def list_number_requests(db: Session = Depends(get_db)) -> list[dict]:
+    rows = db.scalars(
+        select(WaNumberRequest).order_by(desc(WaNumberRequest.created_at))
+    ).all()
+    return [_request_dict(r) for r in rows]
+
+
+@router.post(
+    "/api/wa/requests/{request_id}/approve", dependencies=[Depends(_check_admin)]
+)
+def approve_number_request(
+    request_id: int,
+    x_admin_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.get(WaNumberRequest, request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Permintaan tidak ditemukan")
+    if row.status != "pending":
+        raise HTTPException(status_code=400, detail="Permintaan sudah diproses")
+    admin = get_user_by_token(db, x_admin_token)
+
+    current = recipients(db)
+    if row.number not in current:
+        current.append(row.number)
+    update_settings(db, {"whatsapp_to": ", ".join(current)})
+
+    row.status = "approved"
+    row.decided_at = datetime.now(timezone.utc)
+    row.decided_by = admin.username
+    db.commit()
+
+    delivery_ok = notifier.send_to(
+        row.number,
+        "✅ Halo "
+        + row.name
+        + ",\nNomor WhatsApp Anda sudah disetujui dan akan menerima notifikasi dari Asagri Monitor.",
+    )
+    return {**_request_dict(row), "confirmation_sent": delivery_ok}
+
+
+@router.post(
+    "/api/wa/requests/{request_id}/reject", dependencies=[Depends(_check_admin)]
+)
+def reject_number_request(
+    request_id: int,
+    x_admin_token: str | None = Header(default=None),
+    db: Session = Depends(get_db),
+) -> dict:
+    row = db.get(WaNumberRequest, request_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Permintaan tidak ditemukan")
+    if row.status != "pending":
+        raise HTTPException(status_code=400, detail="Permintaan sudah diproses")
+    admin = get_user_by_token(db, x_admin_token)
+
+    row.status = "rejected"
+    row.decided_at = datetime.now(timezone.utc)
+    row.decided_by = admin.username
+    db.commit()
+    return _request_dict(row)
+
+
 def _frontend_dist() -> Path:
     candidates = [
         Path("static/dist"),
@@ -319,6 +486,19 @@ def _frontend_dist() -> Path:
 
 @router.get("/dashboard")
 def dashboard() -> FileResponse:
+    index = _frontend_dist() / "index.html"
+    if index.is_file():
+        return FileResponse(index)
+    raise HTTPException(
+        status_code=404,
+        detail="Frontend belum di-build. Jalankan: cd frontend && npm run build",
+    )
+
+
+@router.get("/{full_path:path}")
+def spa_fallback(full_path: str) -> FileResponse:
+    if full_path.startswith("api/"):
+        raise HTTPException(status_code=404, detail="Not Found")
     index = _frontend_dist() / "index.html"
     if index.is_file():
         return FileResponse(index)

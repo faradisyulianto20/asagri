@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { Loader2, Lock, ShieldCheck } from "lucide-react";
+import { toast } from "sonner";
 import { loginAdmin } from "../api";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,13 +33,15 @@ export function AdminLogin({
     setError(null);
     try {
       const res = await loginAdmin(username.trim(), password);
+      toast.success("Login berhasil");
       onSuccess(res.token, res.username);
     } catch (err) {
-      setError(
+      const msg =
         err instanceof Error && err.message === "HTTP 401"
           ? "Username atau password salah"
-          : "Gagal login, coba lagi",
-      );
+          : "Gagal login, coba lagi";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }

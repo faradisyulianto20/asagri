@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   fetchHistory,
   fetchLatest,
@@ -22,6 +23,7 @@ export function useDashboardData() {
   const [thresholds, setThresholds] = useState<Thresholds | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const hadError = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -38,8 +40,17 @@ export function useDashboardData() {
       setNotify(n);
       setThresholds(th);
       setError(null);
+      if (hadError.current) {
+        hadError.current = false;
+        toast.success("Koneksi dashboard pulih");
+      }
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      if (!hadError.current) {
+        hadError.current = true;
+        toast.error(`Gagal memuat data: ${msg}`);
+      }
     } finally {
       setLoading(false);
     }

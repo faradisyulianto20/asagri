@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Loader2, Save } from "lucide-react";
+import { toast } from "sonner";
 import {
   fetchAdminSettings,
   updateAdminSettings,
@@ -36,7 +37,11 @@ export function AdminSettings({
     let alive = true;
     fetchAdminSettings(token)
       .then((data) => alive && setForm(data))
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => {
+        const msg = e instanceof Error ? e.message : String(e);
+        setError(msg);
+        toast.error(`Gagal memuat pengaturan: ${msg}`);
+      });
     return () => {
       alive = false;
     };
@@ -61,8 +66,11 @@ export function AdminSettings({
       });
       setForm(updated);
       setSaved(true);
+      toast.success("Pengaturan tersimpan");
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast.error(`Gagal menyimpan: ${msg}`);
     } finally {
       setBusy(false);
     }

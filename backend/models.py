@@ -70,6 +70,20 @@ class User(Base):
     )
 
 
+class WaNumberRequest(Base):
+    __tablename__ = "wa_number_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    number: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, index=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decided_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+
 class AdminSession(Base):
     __tablename__ = "admin_sessions"
 

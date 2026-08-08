@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Loader2, Send } from "lucide-react";
+import { toast } from "sonner";
 import { simulateReading } from "../api";
 import type { LatestData, SimulateResult, Thresholds } from "../api";
 import { Badge } from "@/components/ui/badge";
@@ -64,8 +65,13 @@ export function SimulatePage({
     try {
       const r = await simulateReading(token, temp, hum);
       setResult(r);
+      toast.success(
+        `Simulasi terkirim: ${temp.toFixed(1)}°C / ${hum.toFixed(1)}%`,
+      );
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(msg);
+      toast.error(`Gagal mengirim simulasi: ${msg}`);
     } finally {
       setBusy(false);
     }

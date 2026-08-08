@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { MessageSquareText, QrCode, Unplug, CheckCircle2, XCircle } from "lucide-react";
+import { toast } from "sonner";
 import type { NotifyStatus, WaStatus } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ export function WaCard({
   onScan,
   onDisconnect,
   onTest,
+  actions = true,
 }: {
   wa: WaStatus | null;
   notify: NotifyStatus | null;
@@ -25,10 +27,10 @@ export function WaCard({
   onScan: () => void;
   onDisconnect: () => Promise<void>;
   onTest: () => Promise<void>;
+  actions?: boolean;
 }) {
   const connected = Boolean(wa?.connected);
   const [busy, setBusy] = useState<"test" | "disconnect" | null>(null);
-  const [feedback, setFeedback] = useState<string | null>(null);
 
   const detail = connected
     ? wa?.number
@@ -52,23 +54,20 @@ export function WaCard({
   const run = async (kind: "test" | "disconnect") => {
     if (busy) return;
     setBusy(kind);
-    setFeedback(null);
     try {
       if (kind === "test") {
         await onTest();
-        if (admin) setFeedback("Pesan uji dikirim.");
+        if (admin) toast.success("Pesan uji terkirim");
       } else {
         await onDisconnect();
-        if (admin) setFeedback("Diputus, QR baru akan muncul…");
+        if (admin) toast.success("Diputus, QR baru akan muncul…");
       }
     } catch (e) {
-      setFeedback(
-        admin
-          ? e instanceof Error
-            ? e.message
-            : "Aksi gagal"
-          : "Perlu login admin",
-      );
+      if (admin) {
+        toast.error(e instanceof Error ? e.message : "Aksi gagal");
+      } else {
+        toast.error("Perlu login admin");
+      }
     } finally {
       setBusy(null);
     }
@@ -108,45 +107,42 @@ export function WaCard({
         </div>
       </CardHeader>
       <CardContent className="grid gap-2">
-        {connected ? (
-          <>
+        {actions ? (
+          connected ? (
+            <>
+              <Button
+                variant="default"
+                className="h-10 w-full cursor-pointer"
+                type="button"
+                onClick={() => run("test")}
+                disabled={busy !== null}
+              >
+                <MessageSquareText />
+                {busy === "test" ? "Mengirim…" : "Kirim Pesan Uji"}
+              </Button>
+              <Button
+                variant="destructive"
+                className="h-10 w-full cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/80"
+                type="button"
+                onClick={() => run("disconnect")}
+                disabled={busy !== null}
+              >
+                <Unplug />
+                {busy === "disconnect" ? "Memutus…" : "Putuskan & Ganti Nomor"}
+              </Button>
+            </>
+          ) : (
             <Button
               variant="default"
               className="h-10 w-full cursor-pointer"
               type="button"
-              onClick={() => run("test")}
-              disabled={busy !== null}
+              onClick={onScan}
             >
-              <MessageSquareText />
-              {busy === "test" ? "Mengirim…" : "Kirim Pesan Uji"}
+              <QrCode />
+              Tampilkan QR
             </Button>
-            <Button
-              variant="destructive"
-              className="h-10 w-full cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/80"
-              type="button"
-              onClick={() => run("disconnect")}
-              disabled={busy !== null}
-            >
-              <Unplug />
-              {busy === "disconnect" ? "Memutus…" : "Putuskan & Ganti Nomor"}
-            </Button>
-          </>
-        ) : (
-          <Button
-            variant="default"
-            className="h-10 w-full cursor-pointer"
-            type="button"
-            onClick={onScan}
-          >
-            <QrCode />
-            Tampilkan QR
-          </Button>
-        )}
-        {feedback && (
-          <p className="mt-1 text-xs font-semibold text-primary">
-            {feedback}
-          </p>
-        )}
+          )
+        ) : null}
       </CardContent>
     </Card>
   );

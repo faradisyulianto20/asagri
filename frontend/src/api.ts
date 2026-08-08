@@ -74,6 +74,23 @@ export interface NotifyStatus {
   } | null;
 }
 
+export interface WaRequest {
+  id: number;
+  name: string;
+  number: string;
+  status: "pending" | "approved" | "rejected";
+  created_at?: string;
+  decided_at?: string | null;
+  decided_by?: string | null;
+}
+
+export interface NumberRequestResult {
+  status: "pending" | "approved";
+  name: string;
+  number: string;
+  message: string;
+}
+
 export const TOKEN_KEY = "asagri_admin_token";
 export const USERNAME_KEY = "asagri_admin_user";
 
@@ -186,6 +203,57 @@ export function testWa(
 
 export function disconnectWa(token: string): Promise<{ status: string }> {
   return adminFetch<{ status: string }>("/api/wa/disconnect", token, {
+    method: "POST",
+  });
+}
+
+export async function submitNumberRequest(
+  name: string,
+  number: string,
+): Promise<NumberRequestResult> {
+  const res = await fetch("/api/wa/request", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, number }),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.json()).detail || "";
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<NumberRequestResult>;
+}
+
+export async function fetchRequestStatus(
+  number: string,
+): Promise<{ status: "none" | "pending" | "approved" | "rejected"; name?: string }> {
+  return getJson<{
+    status: "none" | "pending" | "approved" | "rejected";
+    name?: string;
+  }>(`/api/wa/request/status?number=${encodeURIComponent(number)}`);
+}
+
+export function fetchWaRequests(token: string): Promise<WaRequest[]> {
+  return adminFetch<WaRequest[]>("/api/wa/requests", token);
+}
+
+export function approveWaRequest(
+  token: string,
+  id: number,
+): Promise<WaRequest & { confirmation_sent?: boolean }> {
+  return adminFetch<WaRequest & { confirmation_sent?: boolean }>(
+    `/api/wa/requests/${id}/approve`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function rejectWaRequest(token: string, id: number): Promise<WaRequest> {
+  return adminFetch<WaRequest>(`/api/wa/requests/${id}/reject`, token, {
     method: "POST",
   });
 }

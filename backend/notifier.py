@@ -121,5 +121,31 @@ class Notifier:
         result["kind"] = "test"
         return result
 
+    def send_to(self, number: str, message: str) -> bool:
+        to = [number]
+        try:
+            resp = httpx.post(
+                f"{settings.wa_gateway_url.rstrip('/')}/send",
+                json={"to": to, "message": message},
+                headers={"Authorization": f"Bearer {settings.wa_auth_token}"},
+                timeout=30,
+            )
+            ok = resp.status_code < 400
+            self.last_delivery = {
+                "ok": ok,
+                "error": None if ok else f"gateway HTTP {resp.status_code}: {resp.text[:200]}",
+                "to": to,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+            return ok
+        except httpx.HTTPError as exc:
+            self.last_delivery = {
+                "ok": False,
+                "error": f"gateway tidak terjangkau: {exc}",
+                "to": to,
+                "at": datetime.now(timezone.utc).isoformat(),
+            }
+            return False
+
 
 notifier = Notifier()
