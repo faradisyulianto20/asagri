@@ -57,6 +57,12 @@ export interface SimulateResult {
   buzzer: boolean;
   source: string;
   created_at: string;
+  notification?: {
+    ok: boolean;
+    error: string | null;
+    to: string[];
+    at: string;
+  } | null;
 }
 
 export interface LoginResult {

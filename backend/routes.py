@@ -224,7 +224,7 @@ def simulate(payload: SimulatePayload, db: Session = Depends(get_db)) -> dict:
     db.add(reading)
     db.commit()
     db.refresh(reading)
-    notifier.handle(reading, db)
+    notification = notifier.send_simulation(reading, db)
 
     return {
         "id": reading.id,
@@ -235,6 +235,7 @@ def simulate(payload: SimulatePayload, db: Session = Depends(get_db)) -> dict:
         "buzzer": buzzer,
         "source": reading.source,
         "created_at": reading.created_at.isoformat(),
+        "notification": notification,
     }
 
 

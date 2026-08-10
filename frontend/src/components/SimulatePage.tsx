@@ -177,8 +177,39 @@ export function SimulatePage({
             </div>
             <p className="mt-2 text-xs text-primary">
               Data masuk ke riwayat (sumber: simulasi). Notifikasi WhatsApp
-              terkirim hanya jika terjadi perubahan state.
+              dikirim langsung saat simulasi.
             </p>
+            {result.notification && (
+              <div
+                className={`mt-2 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs ${
+                  result.notification.ok
+                    ? "border-primary/40 bg-primary/10 text-primary"
+                    : "border-destructive/40 bg-destructive/10 text-destructive"
+                }`}
+              >
+                <span
+                  className={`mt-1 size-2 shrink-0 rounded-full ${
+                    result.notification.ok ? "bg-primary" : "bg-destructive"
+                  }`}
+                />
+                <div>
+                  {result.notification.ok ? (
+                    <>
+                      Notifikasi WhatsApp terkirim
+                      {result.notification.to.length > 0 && (
+                        <> ke {result.notification.to.length} nomor</>
+                      )}
+                      .
+                    </>
+                  ) : (
+                    <>
+                      Notifikasi WhatsApp gagal:{" "}
+                      {result.notification.error || "error tidak diketahui"}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
