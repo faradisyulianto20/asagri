@@ -270,7 +270,7 @@ async function startClient() {
       store: backendStore,
       clientId: null,
       dataPath: DATA_PATH,
-      backupSyncIntervalMs: 30000,
+      backupSyncIntervalMs: 60000,
     }),
     deviceName: DEVICE_NAME,
     browserName: DEVICE_NAME,
