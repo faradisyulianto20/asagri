@@ -1,9 +1,19 @@
+import anyio
+import json
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    Header,
+    HTTPException,
+    Request,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, select
@@ -13,7 +23,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 
 from config import settings
-from database import get_db
+from database import SessionLocal, get_db
 from auth import create_session, delete_session, get_user_by_token, seed_admin, verify_password
 from models import SensorReading, User, WaNumberRequest, WaSession
 from notifier import notifier
@@ -114,13 +124,25 @@ class SettingsPayload(BaseModel):
     cooldown_minutes: float | None = Field(default=None, ge=0)
 
 
+def _run_notifier(reading: SensorReading) -> None:
+    try:
+        with SessionLocal() as db:
+            notifier.handle(reading, db)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[backend] notifier gagal diproses: {exc}")
+
+
 @router.post("/api/sensor", dependencies=[Depends(_check_token)])
-def receive_sensor(payload: SensorPayload, db: Session = Depends(get_db)) -> dict:
+def receive_sensor(
+    payload: SensorPayload,
+    background: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict:
     reading = SensorReading(**payload.model_dump())
     db.add(reading)
     db.commit()
     db.refresh(reading)
-    notifier.handle(reading, db)
+    background.add_task(_run_notifier, reading)
     return {"status": "ok", "id": reading.id}
 
 
@@ -356,22 +378,50 @@ def wa_test(db: Session = Depends(get_db)) -> dict:
     return result
 
 
+MAX_SESSION_BODY_BYTES = 64 * 1024 * 1024  # 64 MB body base64 JSON
+
+
+def _store_wa_session(body: bytes) -> None:
+    try:
+        payload = json.loads(body)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Body bukan JSON valid") from exc
+    data = payload.get("data") if isinstance(payload, dict) else None
+    number = payload.get("number") if isinstance(payload, dict) else None
+    with SessionLocal() as db:
+        row = db.scalar(select(WaSession).where(WaSession.name == "default"))
+        if row is None:
+            row = WaSession(name="default", data=(data or "").encode("utf-8"))
+            if number:
+                row.number = number
+            db.add(row)
+        else:
+            if data:
+                row.data = data.encode("utf-8")
+            if number:
+                row.number = number
+        db.commit()
+
+
 @router.post("/api/wa/session", dependencies=[Depends(_check_token)])
-def save_wa_session(payload: dict, db: Session = Depends(get_db)) -> dict:
-    data = payload.get("data")
-    number = payload.get("number")
-    row = db.scalar(select(WaSession).where(WaSession.name == "default"))
-    if row is None:
-        row = WaSession(name="default", data=(data or "").encode("utf-8"))
-        if number:
-            row.number = number
-        db.add(row)
-    else:
-        if data:
-            row.data = data.encode("utf-8")
-        if number:
-            row.number = number
-    db.commit()
+async def save_wa_session(request: Request) -> dict:
+    length = request.headers.get("content-length")
+    if length:
+        try:
+            if int(length) > MAX_SESSION_BODY_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Data sesi terlalu besar (maks {MAX_SESSION_BODY_BYTES} byte)",
+                )
+        except ValueError:
+            pass
+    body = await request.body()
+    if len(body) > MAX_SESSION_BODY_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Data sesi terlalu besar (maks {MAX_SESSION_BODY_BYTES} byte)",
+        )
+    await anyio.to_thread.run_sync(_store_wa_session, body)
     return {"status": "ok"}
 
 

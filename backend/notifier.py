@@ -1,3 +1,4 @@
+import threading
 import time
 from datetime import datetime, timezone
 
@@ -37,6 +38,7 @@ class Notifier:
         self.baseline_seen = False
         self.pending: set[str] = set()
         self.last_delivery: dict | None = None
+        self._lock = threading.Lock()
 
     def _post_with_retry(
         self, to: list[str], message: str, *, retries: int = 5, backoff: tuple = (0, 1, 3, 8, 15)
@@ -107,6 +109,10 @@ class Notifier:
         self.last_state["humidifier"] = reading.relay_humidifier
 
     def handle(self, reading: SensorReading, db: Session) -> None:
+        with self._lock:
+            self._handle(reading, db)
+
+    def _handle(self, reading: SensorReading, db: Session) -> None:
         if not self.baseline_seen:
             self._track_state(reading)
             return

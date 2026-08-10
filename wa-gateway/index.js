@@ -15,6 +15,7 @@ const SEND_TIMEOUT_MS = 25000;
 const HEALTH_CHECK_MS = 60000;
 const HEALTH_FAILURE_THRESHOLD = 3;
 const RESTART_MIN_INTERVAL_MS = 30000;
+const BACKUP_SYNC_MS = parseInt(process.env.BACKUP_SYNC_MS || "3600000", 10);
 
 fs.mkdirSync(DATA_PATH, { recursive: true });
 
@@ -310,7 +311,7 @@ async function startClient() {
       store: backendStore,
       clientId: null,
       dataPath: DATA_PATH,
-      backupSyncIntervalMs: 300000,
+      backupSyncIntervalMs: BACKUP_SYNC_MS,
     }),
     deviceName: DEVICE_NAME,
     browserName: DEVICE_NAME,

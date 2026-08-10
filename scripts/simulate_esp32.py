@@ -26,6 +26,12 @@ def send(url: str, token: str, payload: dict) -> int:
     except urllib.error.HTTPError as err:
         print("HTTP error:", err.code, err.read().decode())
         return err.code
+    except urllib.error.URLError as err:
+        print("URL error:", err.reason)
+        return 0
+    except (TimeoutError, ConnectionResetError, OSError) as err:
+        print("Network error:", type(err).__name__, err)
+        return 0
 
 
 def main() -> None:

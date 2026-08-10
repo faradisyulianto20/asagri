@@ -50,6 +50,8 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
    - `BACKEND_URL` (URL backend dari langkah 2)
    - `BACKEND_TOKEN` (sama dengan `API_TOKEN` di backend)
 3. Generate domain → isi `WA_GATEWAY_URL` di backend dengan URL ini, lalu redeploy backend.
+4. Opsional: `BACKUP_SYNC_MS` = interval cadangan session (ms, default `3600000`/60 mnt).
+   Naikkan jika sesi WhatsApp besar agar backup yang dikirim ke backend tidak terlalu sering.
 
 > **Catatan free tier:** aplikasi Railway "tidur" setelah idle. Backend tetap hidup karena
 > ESP32 mengirim data tiap 10 detik. Jika gateway tidur, notifikasi pertama mungkin

@@ -57,6 +57,9 @@ RAMP_MINUTES = (3.0, 5.0)
 HOLD_MINUTES = (2.0, 4.0)
 DECAY_MINUTES = (2.0, 4.0)
 
+SEND_ATTEMPTS = 3
+SEND_BACKOFF = (3, 8)
+
 
 def send(url: str, token: str, payload: dict) -> int:
     req = urllib.request.Request(
@@ -76,6 +79,9 @@ def send(url: str, token: str, payload: dict) -> int:
         return err.code
     except urllib.error.URLError as err:
         print("URL error:", err.reason)
+        return 0
+    except (TimeoutError, ConnectionResetError, OSError) as err:
+        print("Network error:", type(err).__name__, err)
         return 0
 
 
@@ -208,6 +214,21 @@ class Simulator:
             phase = "decay"
         return f"EVENT: {self.event['type']} ({phase})"
 
+    def _send_with_retry(self, payload: dict) -> int:
+        for attempt in range(SEND_ATTEMPTS):
+            code = send(self.url, self.token, payload)
+            if code != 0 and code < 500:
+                return code
+            if attempt < SEND_ATTEMPTS - 1:
+                delay = SEND_BACKOFF[min(attempt, len(SEND_BACKOFF) - 1)]
+                print(
+                    f"    [simulator] kirim gagal (HTTP {code}), "
+                    f"coba lagi dalam {delay}s",
+                    flush=True,
+                )
+                time.sleep(delay)
+        return code
+
     def run(self, steps: int | None) -> None:
         print(
             f"Simulasi live dimulai (interval {self.interval:.0f}s, "
@@ -229,7 +250,7 @@ class Simulator:
                     "relay_4": False,
                     "buzzer": buzzer,
                 }
-                code = send(self.url, self.token, payload)
+                code = self._send_with_retry(payload)
                 print(
                     f"[{time.strftime('%H:%M:%S')}] t={self.temp:.1f} "
                     f"h={self.hum:.1f} fan={self.fan} humid={self.humid} "
