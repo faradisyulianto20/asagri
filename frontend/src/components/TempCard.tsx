@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 export function TempCard({ latest }: { latest: LatestData | null }) {
   const value = latest?.available ? latest.temperature : undefined;
   return (
-    <Card className="relative flex min-h-[150px] flex-col justify-between overflow-hidden">
+    <Card className="relative flex min-h-[150px] flex-col justify-between overflow-hidden p-6">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary to-secondary" />
       <div className="flex items-center gap-2">
         <span className="grid size-10 place-items-center rounded-xl bg-primary/10 text-primary">
