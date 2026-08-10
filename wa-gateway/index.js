@@ -123,6 +123,10 @@ app.post("/disconnect", (req, res) => {
   }
 });
 
+app.get("/", (_req, res) => {
+  sendJson(res, { service: "asagri wa-gateway", ...status, qr: status.connected ? null : qrDataUrl });
+});
+
 app.get("/status", (_req, res) => {
   sendJson(res, { ...status, qr: status.connected ? null : qrDataUrl });
 });
