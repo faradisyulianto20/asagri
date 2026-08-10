@@ -1,79 +1,81 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const qrcode = require("qrcode");
-const { Client, AuthStrategy } = require("whatsapp-web.js");
+const { Client, RemoteAuth } = require("whatsapp-web.js");
 
 const PORT = process.env.PORT || 4100;
 const AUTH_TOKEN = process.env.AUTH_TOKEN || "ganti-token-gateway";
 const BACKEND_URL = (process.env.BACKEND_URL || "").replace(/\/$/, "");
 const BACKEND_TOKEN = process.env.BACKEND_TOKEN || "";
+const DATA_PATH = process.env.DATA_PATH || path.resolve("./.wwebjs_auth");
+
+fs.mkdirSync(DATA_PATH, { recursive: true });
 
 let client = null;
 let qrDataUrl = null;
 let status = { connected: false, registered: false, number: null, starting: true };
 
-class DbAuthStrategy extends AuthStrategy {
-  constructor() {
-    super();
-    this.state = null;
-  }
+async function apiCall(urlPath, options = {}) {
+  const headers = { ...(options.headers || {}), "X-API-Token": BACKEND_TOKEN };
+  if (options.body) headers["Content-Type"] = "application/json";
+  return fetch(`${BACKEND_URL}${urlPath}`, { ...options, headers });
+}
 
-  async getState() {
-    if (this.state) return this.state;
-    if (!BACKEND_URL || !BACKEND_TOKEN) {
-      console.warn("[gateway] BACKEND_URL/BACKEND_TOKEN belum di-set, sesi tidak dipulihkan dari database");
-      return null;
-    }
+const backendStore = {
+  async sessionExists() {
+    if (!BACKEND_URL || !BACKEND_TOKEN) return false;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
-        headers: { "X-API-Token": BACKEND_TOKEN },
-      });
-      if (!res.ok) return null;
+      const res = await apiCall("/api/wa/session");
+      if (!res.ok) return false;
       const body = await res.json();
-      if (body.available && body.data) {
-        this.state = JSON.parse(body.data);
-        console.log("[gateway] sesi dipulihkan dari database", body.number ? `(nomor ${body.number})` : "");
-      }
+      return Boolean(body.available && body.data);
+    } catch (err) {
+      console.error("[gateway] gagal cek sesi di database:", err.message);
+      return false;
+    }
+  },
+
+  async save({ session }) {
+    if (!BACKEND_URL || !BACKEND_TOKEN) return;
+    try {
+      const zipPath = path.join(DATA_PATH, `${session}.zip`);
+      const zip = await fs.promises.readFile(zipPath);
+      const res = await apiCall("/api/wa/session", {
+        method: "POST",
+        body: JSON.stringify({ data: zip.toString("base64") }),
+      });
+      if (res.ok) console.log("[gateway] sesi dicadangkan ke database");
+      else console.error("[gateway] gagal simpan sesi ke database:", res.status, await res.text());
+    } catch (err) {
+      console.error("[gateway] gagal baca/unggah sesi:", err.message);
+    }
+  },
+
+  async extract({ session, path: destPath }) {
+    if (!BACKEND_URL || !BACKEND_TOKEN) return;
+    try {
+      const res = await apiCall("/api/wa/session");
+      if (!res.ok) return;
+      const body = await res.json();
+      if (!body.available || !body.data) return;
+      await fs.promises.writeFile(destPath, Buffer.from(body.data, "base64"));
+      console.log("[gateway] sesi dipulihkan dari database");
     } catch (err) {
       console.error("[gateway] gagal ambil sesi dari database:", err.message);
     }
-    return this.state;
-  }
+  },
 
-  async saveState(state) {
-    this.state = state;
+  async delete() {
     if (!BACKEND_URL || !BACKEND_TOKEN) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Token": BACKEND_TOKEN,
-        },
-        body: JSON.stringify({ data: JSON.stringify(state) }),
-      });
-      if (res.ok) console.log("[gateway] sesi disimpan ke database");
-      else console.error("[gateway] gagal simpan sesi ke database:", res.status, await res.text());
-    } catch (err) {
-      console.error("[gateway] gagal simpan sesi ke database:", err.message);
-    }
-  }
-
-  async clear() {
-    this.state = null;
-    if (!BACKEND_URL || !BACKEND_TOKEN) return;
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/wa/session`, {
-        method: "DELETE",
-        headers: { "X-API-Token": BACKEND_TOKEN },
-      });
+      const res = await apiCall("/api/wa/session", { method: "DELETE" });
       console.log("[gateway] sesi dihapus dari database", res.ok ? "" : `(status ${res.status})`);
     } catch (err) {
       console.error("[gateway] gagal hapus sesi dari database:", err.message);
     }
-  }
-}
-
-const authStrategy = new DbAuthStrategy();
+  },
+};
 
 const app = express();
 app.use(express.json({ limit: "5mb" }));
@@ -134,12 +136,8 @@ app.get("/status", (_req, res) => {
 async function saveNumber(number) {
   if (!BACKEND_URL || !BACKEND_TOKEN) return;
   try {
-    await fetch(`${BACKEND_URL}/api/wa/session`, {
+    await apiCall("/api/wa/session", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-Token": BACKEND_TOKEN,
-      },
       body: JSON.stringify({ number }),
     });
   } catch (err) {
@@ -149,7 +147,12 @@ async function saveNumber(number) {
 
 async function startClient() {
   const options = {
-    authStrategy,
+    authStrategy: new RemoteAuth({
+      store: backendStore,
+      clientId: null,
+      dataPath: DATA_PATH,
+      backupSyncIntervalMs: 60000,
+    }),
     puppeteer: process.env.CHROMIUM_PATH
       ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"], executablePath: process.env.CHROMIUM_PATH }
       : { headless: true },

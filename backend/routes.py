@@ -361,9 +361,7 @@ def save_wa_session(payload: dict, db: Session = Depends(get_db)) -> dict:
     number = payload.get("number")
     row = db.scalar(select(WaSession).where(WaSession.name == "default"))
     if row is None:
-        if not data:
-            raise HTTPException(status_code=400, detail="data session kosong")
-        row = WaSession(name="default", data=data.encode("utf-8"))
+        row = WaSession(name="default", data=(data or "").encode("utf-8"))
         if number:
             row.number = number
         db.add(row)
