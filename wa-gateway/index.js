@@ -13,6 +13,7 @@ const DEVICE_NAME = process.env.DEVICE_NAME || "Asagri Monitor";
 
 const SEND_TIMEOUT_MS = 25000;
 const HEALTH_CHECK_MS = 60000;
+const HEALTH_FAILURE_THRESHOLD = 3;
 const RESTART_MIN_INTERVAL_MS = 30000;
 
 fs.mkdirSync(DATA_PATH, { recursive: true });
@@ -23,6 +24,9 @@ let status = { connected: false, registered: false, number: null, starting: true
 let restarting = false;
 let lastRestartAttempt = 0;
 let intentionalDisconnect = false;
+let healthFailures = 0;
+let restartCount = 0;
+let lastRestartReason = null;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -46,9 +50,12 @@ function scheduleRestart(reason) {
   console.error("[gateway] RESTART karena:", reason);
   restarting = true;
   lastRestartAttempt = Date.now();
+  restartCount += 1;
+  lastRestartReason = reason;
   const current = client;
   client = null;
   qrDataUrl = null;
+  healthFailures = 0;
   status = { connected: false, registered: false, number: null, starting: true, error: null };
   const bounded = (promise) =>
     Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
@@ -185,6 +192,7 @@ app.post("/disconnect", (req, res) => {
   restarting = false;
   lastRestartAttempt = 0;
   intentionalDisconnect = true;
+  healthFailures = 0;
   const current = client;
   client = null;
   qrDataUrl = null;
@@ -209,11 +217,22 @@ app.post("/disconnect", (req, res) => {
 });
 
 app.get("/", (_req, res) => {
-  sendJson(res, { service: "asagri wa-gateway", ...status, qr: status.connected ? null : qrDataUrl });
+  sendJson(res, {
+    service: "asagri wa-gateway",
+    ...status,
+    restartCount,
+    lastRestartReason,
+    qr: status.connected ? null : qrDataUrl,
+  });
 });
 
 app.get("/status", (_req, res) => {
-  sendJson(res, { ...status, qr: status.connected ? null : qrDataUrl });
+  sendJson(res, {
+    ...status,
+    restartCount,
+    lastRestartReason,
+    qr: status.connected ? null : qrDataUrl,
+  });
 });
 
 app.get("/env", (_req, res) => {
@@ -243,7 +262,7 @@ async function saveNumber(number) {
 async function getStateSafe() {
   if (!client) return null;
   try {
-    return await withTimeout(client.getState(), 10000, "getState");
+    return await withTimeout(client.getState(), 25000, "getState");
   } catch (err) {
     console.error("[gateway] getState gagal:", err.message);
     return null;
@@ -253,30 +272,53 @@ async function getStateSafe() {
 async function checkHealth() {
   if (!client || !status.connected) return;
   const state = await getStateSafe();
-  if (state === null) {
-    scheduleRestart("health-check: getState gagal/tidak membalas");
+  if (state === null || state !== "CONNECTED") {
+    healthFailures += 1;
+    console.error(
+      `[gateway] health-check: state = ${state || "null"} (kegagalan ke-${healthFailures}/${HEALTH_FAILURE_THRESHOLD})`
+    );
+    if (healthFailures >= HEALTH_FAILURE_THRESHOLD) {
+      scheduleRestart(
+        `health-check: getState gagal/tidak membalas ${healthFailures}x berturut-turut`
+      );
+    }
     return;
   }
-  if (state !== "CONNECTED") {
-    console.error("[gateway] health-check: state =", state);
-    scheduleRestart(`health-check: state = ${state}`);
-  }
+  healthFailures = 0;
 }
 setInterval(checkHealth, HEALTH_CHECK_MS);
 
 async function startClient() {
+  const CHROME_ARGS = [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--no-first-run",
+    "--disable-extensions",
+    "--single-process",
+    "--no-zygote",
+    "--disable-accelerated-2d-canvas",
+    "--disable-background-timer-throttling",
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-ipc-flooding-protection",
+    "--memory-pressure-off",
+  ];
   const options = {
     authStrategy: new RemoteAuth({
       store: backendStore,
       clientId: null,
       dataPath: DATA_PATH,
-      backupSyncIntervalMs: 60000,
+      backupSyncIntervalMs: 300000,
     }),
     deviceName: DEVICE_NAME,
     browserName: DEVICE_NAME,
-    puppeteer: process.env.CHROMIUM_PATH
-      ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-first-run", "--disable-extensions"], executablePath: process.env.CHROMIUM_PATH }
-      : { headless: true },
+    puppeteer: {
+      headless: true,
+      args: CHROME_ARGS,
+      ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
+    },
   };
 
   client = new Client(options);
@@ -301,10 +343,21 @@ async function startClient() {
 
   client.on("ready", async () => {
     const state = await getStateSafe();
-    status.connected = state === "CONNECTED";
+    status.registered = true;
     status.starting = false;
     status.number = client.info.wid.user;
     status.error = null;
+    if (state === "CONNECTED") {
+      status.connected = true;
+      healthFailures = 0;
+    } else {
+      status.connected = true;
+      console.warn(
+        "[gateway] ready tetapi getState tidak membalas (state =",
+        state || "null",
+        "); biarkan tersambung, health-check akan menindaklanjuti"
+      );
+    }
     console.log(
       "[gateway] whatsapp siap, nomor:",
       client.info.wid.user,
@@ -313,8 +366,6 @@ async function startClient() {
     );
     if (status.connected) {
       saveNumber(client.info.wid.user);
-    } else {
-      scheduleRestart(`ready tetapi state tidak CONNECTED (${state || "unknown"})`);
     }
   });
 

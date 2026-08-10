@@ -39,20 +39,20 @@ class Notifier:
         self.last_delivery: dict | None = None
 
     def _post_with_retry(
-        self, to: list[str], message: str, *, retries: int = 2
+        self, to: list[str], message: str, *, retries: int = 5, backoff: tuple = (0, 1, 3, 8, 15)
     ) -> dict:
-        """Kirim pesan, dengan retry singkat untuk error transien (cold-start)."""
+        """Kirim pesan, dengan retry backoff untuk menutup jendela restart gateway."""
         url = f"{settings.wa_gateway_url.rstrip('/')}/send"
         headers = {"Authorization": f"Bearer {settings.wa_auth_token}"}
         for attempt in range(retries):
             if attempt:
-                time.sleep(1)
+                time.sleep(backoff[min(attempt, len(backoff) - 1)])
             try:
                 resp = httpx.post(
                     url,
                     json={"to": to, "message": message},
                     headers=headers,
-                    timeout=30,
+                    timeout=40,
                 )
                 if resp.status_code in (500, 502, 503, 504) and attempt < retries - 1:
                     continue
