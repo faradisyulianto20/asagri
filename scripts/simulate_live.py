@@ -20,14 +20,23 @@ Contoh pemakaian:
 
   # hanya 120 kiriman lalu berhenti (demo singkat)
   python scripts/simulate_live.py --url <URL> --token <TOKEN> --steps 120
+
+Mode deploy (service Railway):
+  Default argumen dibaca dari env vars: URL, API_TOKEN, INTERVAL, EVENT_MIN,
+  EVENT_MAX, SEED. Jika env PORT ter-set, server HTTP kecil (stdlib) ikut
+  berjalan untuk keep-alive (/ping). Jika SELF_URL ter-set, script men-ping
+  domainnya sendiri tiap 5 menit agar container Railway tidak tertidur.
 """
 import argparse
 import json
+import os
 import random
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Ambang sama dengan esp32/main.ino
 TH_FAN_ON = 32.0
@@ -235,20 +244,84 @@ class Simulator:
             sys.exit(0)
 
 
+def _read_json(data: dict) -> bytes:
+    return json.dumps(data).encode()
+
+
+def _start_keepalive_server(simulator: "Simulator", port: int) -> None:
+    """Server HTTP kecil (stdlib) untuk menjaga container Railway tetap aktif."""
+    class Handler(BaseHTTPRequestHandler):
+        def _respond(self, code: int, data: dict) -> None:
+            body = _read_json(data)
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):  # noqa: N802
+            if self.path in ("/", "/ping", "/status"):
+                self._respond(
+                    200,
+                    {
+                        "status": "ok",
+                        "service": "asagri-simulator",
+                        "temperature": round(simulator.temp, 1),
+                        "humidity": round(simulator.hum, 1),
+                        "relay_fan": simulator.fan,
+                        "relay_humidifier": simulator.humid,
+                        "event": simulator.event["type"] if simulator.event else None,
+                    },
+                )
+            else:
+                self._respond(404, {"status": "not_found"})
+
+        def log_message(self, *args) -> None:  # heningkan log per-request
+            return
+
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    print(f"[simulator] keep-alive HTTP server di port {port} (/ping)")
+
+
+def _self_ping_loop(self_url: str, interval: float) -> None:
+    """Ping URL publik sendiri agar Railway free tier tidak menidurkan container."""
+    while True:
+        time.sleep(interval)
+        try:
+            with urllib.request.urlopen(self_url + "/ping", timeout=10) as resp:
+                if resp.status != 200:
+                    print("[simulator] self-ping: HTTP", resp.status)
+        except Exception as err:
+            print("[simulator] self-ping gagal:", err)
+
+
 def main() -> None:
+    def _env_float(name: str, default: float) -> float:
+        try:
+            return float(os.environ.get(name, ""))
+        except ValueError:
+            return default
+
+    def _env_int(name: str) -> int | None:
+        try:
+            return int(os.environ.get(name, ""))
+        except ValueError:
+            return None
+
     parser = argparse.ArgumentParser(
         description="Simulasi live ESP32: data realistis + event kondisi (heat/dry/extreme)"
     )
-    parser.add_argument("--url", default="http://localhost:8000")
-    parser.add_argument("--token", default="ganti-token-esp32")
-    parser.add_argument("--interval", type=float, default=10.0,
+    parser.add_argument("--url", default=os.environ.get("URL", "http://localhost:8000"))
+    parser.add_argument("--token", default=os.environ.get("API_TOKEN", "ganti-token-esp32"))
+    parser.add_argument("--interval", type=float, default=_env_float("INTERVAL", 10.0),
                         help="jeda kirim data dalam detik (default: 10, seperti ESP32)")
-    parser.add_argument("--event-min", type=float, default=10.0,
+    parser.add_argument("--event-min", type=float, default=_env_float("EVENT_MIN", 10.0),
                         help="jeda minimum antar event dalam menit (default: 10)")
-    parser.add_argument("--event-max", type=float, default=20.0,
+    parser.add_argument("--event-max", type=float, default=_env_float("EVENT_MAX", 20.0),
                         help="jeda maksimum antar event dalam menit (default: 20)")
-    parser.add_argument("--seed", type=int, default=None,
-                        help="seed acak agar hasil reproducible")
+    parser.add_argument("--seed", type=int, default=_env_int("SEED"),
+                        help="seed acak agar hasil reproducible (env: SEED)")
     parser.add_argument("--steps", type=int, default=None,
                         help="jumlah kiriman sebelum berhenti (default: tanpa batas)")
     args = parser.parse_args()
@@ -258,7 +331,20 @@ def main() -> None:
     if args.interval <= 0:
         parser.error("--interval harus lebih besar dari 0")
 
-    Simulator(args).run(args.steps)
+    port_env = os.environ.get("PORT")
+    if port_env:
+        simulator = Simulator(args)
+        _start_keepalive_server(simulator, int(port_env))
+        self_url = os.environ.get("SELF_URL", "").rstrip("/")
+        if self_url:
+            interval = _env_float("KEEPALIVE_INTERVAL", 300.0)
+            threading.Thread(
+                target=_self_ping_loop, args=(self_url, interval), daemon=True
+            ).start()
+            print(f"[simulator] self-ping aktif tiap {interval:.0f}s ke {self_url}")
+        simulator.run(None)
+    else:
+        Simulator(args).run(args.steps)
 
 
 if __name__ == "__main__":
