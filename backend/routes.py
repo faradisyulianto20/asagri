@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -245,39 +246,102 @@ def notify_status() -> dict:
     }
 
 
+def _gateway_url(path: str) -> str:
+    return f"{settings.wa_gateway_url.rstrip('/')}{path}"
+
+
+def _gateway_detail(resp: httpx.Response) -> str:
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        for key in ("detail", "error", "message"):
+            if body.get(key):
+                return str(body[key])[:300]
+    return (resp.text or "").strip()[:300]
+
+
+def _gateway_request(
+    method: str,
+    path: str,
+    *,
+    timeout: float = 30,
+    retries: int = 2,
+) -> httpx.Response:
+    """Hubungi wa-gateway dengan retry singkat untuk error transien (cold-start).
+
+    Mengangkat HTTPException(503) saat gateway tidak terjangkau/tidak merespons.
+    """
+    url = _gateway_url(path)
+    headers = {"Authorization": f"Bearer {settings.wa_auth_token}"}
+    last_resp: httpx.Response | None = None
+    for attempt in range(retries):
+        if attempt:
+            time.sleep(1)
+        try:
+            resp = httpx.request(method, url, headers=headers, timeout=timeout)
+        except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as exc:
+            if attempt < retries - 1:
+                continue
+            raise HTTPException(
+                status_code=503,
+                detail="Gateway WhatsApp tidak merespons (mungkin sedang tidur atau menyalakan ulang): "
+                f"{exc}",
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(
+                status_code=503, detail=f"Gateway WhatsApp tidak terjangkau: {exc}"
+            )
+        if resp.status_code in (502, 503, 504) and attempt < retries - 1:
+            last_resp = resp
+            continue
+        return resp
+    if last_resp is not None:
+        return last_resp
+    raise HTTPException(
+        status_code=503, detail="Gateway WhatsApp tidak merespons (mungkin sedang tidur)"
+    )
+
+
+def _gateway_http_error(resp: httpx.Response) -> HTTPException:
+    detail = _gateway_detail(resp)
+    if resp.status_code == 401:
+        message = (
+            "Token gateway WhatsApp tidak cocok. Periksa WA_AUTH_TOKEN "
+            "(backend) vs AUTH_TOKEN (wa-gateway)."
+        )
+        if detail:
+            message += f" {detail}"
+        return HTTPException(status_code=502, detail=message)
+    message = f"Gateway WhatsApp menolak permintaan (HTTP {resp.status_code})."
+    if detail:
+        message += f" {detail}"
+    return HTTPException(status_code=502, detail=message)
+
+
 @router.get("/api/wa/status")
 def wa_status() -> dict:
     try:
-        resp = httpx.get(
-            f"{settings.wa_gateway_url.rstrip('/')}/status", timeout=10
-        )
+        resp = _gateway_request("GET", "/status", timeout=10, retries=2)
+    except HTTPException as exc:
+        return {"connected": False, "error": str(exc.detail)}
+    if resp.status_code >= 400:
+        return {
+            "connected": False,
+            "error": _gateway_detail(resp) or f"gateway HTTP {resp.status_code}",
+        }
+    try:
         return resp.json()
-    except httpx.HTTPError as exc:
-        return {"connected": False, "error": f"gateway tidak terjangkau: {exc}"}
+    except ValueError:
+        return {"connected": False, "error": "respons gateway bukan JSON"}
 
 
 @router.post("/api/wa/disconnect", dependencies=[Depends(_check_admin)])
 def wa_disconnect() -> dict:
-    try:
-        resp = httpx.post(
-            f"{settings.wa_gateway_url.rstrip('/')}/disconnect",
-            headers={"Authorization": f"Bearer {settings.wa_auth_token}"},
-            timeout=30,
-        )
-    except (httpx.ConnectTimeout, httpx.ReadTimeout):
-        raise HTTPException(
-            status_code=503,
-            detail="Gateway WhatsApp tidak merespons (mungkin sedang tidur atau menyalakan ulang)",
-        )
-    except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=503, detail=f"Gateway WhatsApp tidak terjangkau: {exc}"
-        )
+    resp = _gateway_request("POST", "/disconnect", timeout=30)
     if resp.status_code >= 400:
-        raise HTTPException(
-            status_code=502,
-            detail=f"Gateway menolak permintaan: HTTP {resp.status_code}",
-        )
+        raise _gateway_http_error(resp)
     return resp.json()
 
 

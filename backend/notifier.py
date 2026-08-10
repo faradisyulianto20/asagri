@@ -9,6 +9,27 @@ from models import SensorReading
 from settings_store import cooldown_seconds, get_setting, recipients
 
 
+def _gateway_detail(resp: httpx.Response) -> str:
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        for key in ("detail", "error", "message"):
+            if body.get(key):
+                return str(body[key])[:300]
+    return (resp.text or "").strip()[:300]
+
+
+def _delivery(ok: bool, error: str | None, to: list[str]) -> dict:
+    return {
+        "ok": ok,
+        "error": error,
+        "to": to,
+        "at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 class Notifier:
     def __init__(self) -> None:
         self.last_state: dict[str, bool] = {}
@@ -16,6 +37,37 @@ class Notifier:
         self.baseline_seen = False
         self.pending: set[str] = set()
         self.last_delivery: dict | None = None
+
+    def _post_with_retry(
+        self, to: list[str], message: str, *, retries: int = 2
+    ) -> dict:
+        """Kirim pesan, dengan retry singkat untuk error transien (cold-start)."""
+        url = f"{settings.wa_gateway_url.rstrip('/')}/send"
+        headers = {"Authorization": f"Bearer {settings.wa_auth_token}"}
+        for attempt in range(retries):
+            if attempt:
+                time.sleep(1)
+            try:
+                resp = httpx.post(
+                    url,
+                    json={"to": to, "message": message},
+                    headers=headers,
+                    timeout=30,
+                )
+                if resp.status_code in (502, 503, 504) and attempt < retries - 1:
+                    continue
+                if resp.status_code < 400:
+                    return _delivery(True, None, to)
+                return _delivery(
+                    False,
+                    f"gateway HTTP {resp.status_code}: {_gateway_detail(resp)}",
+                    to,
+                )
+            except httpx.HTTPError as exc:
+                if attempt < retries - 1:
+                    continue
+                return _delivery(False, f"gateway tidak terjangkau: {exc}", to)
+        return _delivery(False, "gateway tidak merespons", to)
 
     def _post(self, message: str, db: Session) -> bool:
         to = recipients(db)
@@ -27,29 +79,8 @@ class Notifier:
                 "at": datetime.now(timezone.utc).isoformat(),
             }
             return False
-        try:
-            resp = httpx.post(
-                f"{settings.wa_gateway_url.rstrip('/')}/send",
-                json={"to": to, "message": message},
-                headers={"Authorization": f"Bearer {settings.wa_auth_token}"},
-                timeout=30,
-            )
-            ok = resp.status_code < 400
-            self.last_delivery = {
-                "ok": ok,
-                "error": None if ok else f"gateway HTTP {resp.status_code}: {resp.text[:200]}",
-                "to": to,
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-            return ok
-        except httpx.HTTPError as exc:
-            self.last_delivery = {
-                "ok": False,
-                "error": f"gateway tidak terjangkau: {exc}",
-                "to": to,
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-            return False
+        self.last_delivery = self._post_with_retry(to, message)
+        return self.last_delivery["ok"]
 
     def _notify(self, kind: str, message: str, db: Session) -> bool:
         now = time.time()
@@ -123,29 +154,8 @@ class Notifier:
 
     def send_to(self, number: str, message: str) -> bool:
         to = [number]
-        try:
-            resp = httpx.post(
-                f"{settings.wa_gateway_url.rstrip('/')}/send",
-                json={"to": to, "message": message},
-                headers={"Authorization": f"Bearer {settings.wa_auth_token}"},
-                timeout=30,
-            )
-            ok = resp.status_code < 400
-            self.last_delivery = {
-                "ok": ok,
-                "error": None if ok else f"gateway HTTP {resp.status_code}: {resp.text[:200]}",
-                "to": to,
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-            return ok
-        except httpx.HTTPError as exc:
-            self.last_delivery = {
-                "ok": False,
-                "error": f"gateway tidak terjangkau: {exc}",
-                "to": to,
-                "at": datetime.now(timezone.utc).isoformat(),
-            }
-            return False
+        self.last_delivery = self._post_with_retry(to, message)
+        return self.last_delivery["ok"]
 
 
 notifier = Notifier()
