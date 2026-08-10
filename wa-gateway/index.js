@@ -10,11 +10,54 @@ const BACKEND_URL = (process.env.BACKEND_URL || "").replace(/\/$/, "");
 const BACKEND_TOKEN = process.env.BACKEND_TOKEN || "";
 const DATA_PATH = process.env.DATA_PATH || path.resolve("./.wwebjs_auth");
 
+const SEND_TIMEOUT_MS = 25000;
+const HEALTH_CHECK_MS = 60000;
+const RESTART_MIN_INTERVAL_MS = 30000;
+
 fs.mkdirSync(DATA_PATH, { recursive: true });
 
 let client = null;
 let qrDataUrl = null;
 let status = { connected: false, registered: false, number: null, starting: true };
+let restarting = false;
+let lastRestartAttempt = 0;
+
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
+
+function scheduleRestart(reason) {
+  if (!client) return;
+  if (restarting) {
+    console.log("[gateway] restart sudah berjalan, abaikan:", reason);
+    return;
+  }
+  if (Date.now() - lastRestartAttempt < RESTART_MIN_INTERVAL_MS) {
+    console.warn("[gateway] restart diblokir (cooldown), alasan:", reason);
+    return;
+  }
+  console.error("[gateway] RESTART karena:", reason);
+  restarting = true;
+  lastRestartAttempt = Date.now();
+  const current = client;
+  client = null;
+  qrDataUrl = null;
+  status = { connected: false, registered: false, number: null, starting: true };
+  const bounded = (promise) =>
+    Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
+  (current
+    ? bounded(current.destroy().catch((err) => console.error("[gateway] destroy gagal:", err.message)))
+    : Promise.resolve()
+  ).finally(() => {
+    restarting = false;
+    startClient();
+  });
+}
 
 async function apiCall(urlPath, options = {}) {
   const headers = { ...(options.headers || {}), "X-API-Token": BACKEND_TOKEN };
@@ -84,24 +127,42 @@ function sendJson(res, data, code = 200) {
   res.status(code).json(data);
 }
 
-app.post("/send", (req, res) => {
+app.post("/send", async (req, res) => {
   const auth = req.headers.authorization || "";
   if (auth !== `Bearer ${AUTH_TOKEN}`) return sendJson(res, { error: "unauthorized" }, 401);
   const { to, message } = req.body || {};
   const targets = Array.isArray(to) ? to.filter(Boolean) : [to];
   if (targets.length === 0 || !message) return sendJson(res, { error: "to dan message wajib" }, 400);
-  if (!status.connected) return sendJson(res, { error: "whatsapp belum terhubung" }, 503);
+  if (!client || !status.connected) return sendJson(res, { error: "whatsapp belum terhubung" }, 503);
 
   const recipients = targets.map((t) => (String(t).includes("@g.us") ? String(t) : `${t}@c.us`));
-  Promise.all(recipients.map((t) => client.sendMessage(t, String(message))))
-    .then(() => sendJson(res, { status: "sent", to: recipients.length }))
-    .catch((err) => sendJson(res, { error: String(err) }, 500));
+  try {
+    await withTimeout(
+      Promise.all(recipients.map((t) => client.sendMessage(t, String(message)))),
+      SEND_TIMEOUT_MS,
+      "sendMessage"
+    );
+    sendJson(res, { status: "sent", to: recipients.length });
+  } catch (err) {
+    console.error("[gateway] kirim pesan gagal:", err.message);
+    if (err.message.includes("timed out")) {
+      scheduleRestart("sendMessage timeout — link WhatsApp diduga mati");
+      return sendJson(
+        res,
+        { error: "kirim timeout, link WhatsApp diduga mati; restart otomatis dijalankan" },
+        504
+      );
+    }
+    sendJson(res, { error: String(err) }, 500);
+  }
 });
 
 app.post("/disconnect", (req, res) => {
   const auth = req.headers.authorization || "";
   if (auth !== `Bearer ${AUTH_TOKEN}`) return sendJson(res, { error: "unauthorized" }, 401);
 
+  restarting = false;
+  lastRestartAttempt = 0;
   const current = client;
   client = null;
   qrDataUrl = null;
@@ -145,6 +206,30 @@ async function saveNumber(number) {
   }
 }
 
+async function getStateSafe() {
+  if (!client) return null;
+  try {
+    return await withTimeout(client.getState(), 10000, "getState");
+  } catch (err) {
+    console.error("[gateway] getState gagal:", err.message);
+    return null;
+  }
+}
+
+async function checkHealth() {
+  if (!client || !status.connected) return;
+  const state = await getStateSafe();
+  if (state === null) {
+    scheduleRestart("health-check: getState gagal/tidak membalas");
+    return;
+  }
+  if (state !== "CONNECTED") {
+    console.error("[gateway] health-check: state =", state);
+    scheduleRestart(`health-check: state = ${state}`);
+  }
+}
+setInterval(checkHealth, HEALTH_CHECK_MS);
+
 async function startClient() {
   const options = {
     authStrategy: new RemoteAuth({
@@ -170,18 +255,29 @@ async function startClient() {
     console.log("[gateway] QR baru tersedia, scan lewat dashboard");
   });
 
-  client.on("ready", () => {
-    status.connected = true;
+  client.on("ready", async () => {
+    const state = await getStateSafe();
+    status.connected = state === "CONNECTED";
     status.starting = false;
     status.number = client.info.wid.user;
-    console.log("[gateway] whatsapp siap, nomor:", client.info.wid.user);
-    saveNumber(client.info.wid.user);
+    console.log(
+      "[gateway] whatsapp siap, nomor:",
+      client.info.wid.user,
+      "| state:",
+      state || "unknown"
+    );
+    if (status.connected) {
+      saveNumber(client.info.wid.user);
+    } else {
+      scheduleRestart(`ready tetapi state tidak CONNECTED (${state || "unknown"})`);
+    }
   });
 
   client.on("disconnected", (reason) => {
     status.connected = false;
     status.registered = false;
-    console.log("[gateway] terputus:", reason);
+    console.error("[gateway] terputus:", reason);
+    setTimeout(() => scheduleRestart(`terputus: ${reason}`), 10000);
   });
 
   try {
@@ -189,6 +285,7 @@ async function startClient() {
   } catch (err) {
     console.error("[gateway] initialize gagal:", err.message);
     status.starting = false;
+    setTimeout(() => scheduleRestart(`initialize gagal: ${err.message}`), 5000);
   }
 }
 
