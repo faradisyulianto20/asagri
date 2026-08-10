@@ -2,6 +2,7 @@ import { useState } from "react";
 import { MessageSquareText, QrCode, Unplug, CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import type { NotifyStatus, WaStatus } from "../api";
+import { formatNumber } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,7 +35,7 @@ export function WaCard({
 
   const detail = connected
     ? wa?.number
-      ? `Nomor: ${wa.number}`
+      ? `Nomor: ${formatNumber(wa.number)}`
       : "Gateway terhubung"
     : wa?.error || "Scan QR untuk menghubungkan";
 

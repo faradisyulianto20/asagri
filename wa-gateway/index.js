@@ -254,6 +254,7 @@ async function startClient() {
       backupSyncIntervalMs: 60000,
     }),
     deviceName: DEVICE_NAME,
+    browserName: DEVICE_NAME,
     puppeteer: process.env.CHROMIUM_PATH
       ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"], executablePath: process.env.CHROMIUM_PATH }
       : { headless: true },
