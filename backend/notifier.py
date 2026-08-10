@@ -54,7 +54,7 @@ class Notifier:
                     headers=headers,
                     timeout=30,
                 )
-                if resp.status_code in (502, 503, 504) and attempt < retries - 1:
+                if resp.status_code in (500, 502, 503, 504) and attempt < retries - 1:
                     continue
                 if resp.status_code < 400:
                     return _delivery(True, None, to)

@@ -139,11 +139,22 @@ app.post("/send", async (req, res) => {
 
   const recipients = targets.map((t) => (String(t).includes("@g.us") ? String(t) : `${t}@c.us`));
   try {
-    await withTimeout(
-      Promise.all(recipients.map((t) => client.sendMessage(t, String(message)))),
-      SEND_TIMEOUT_MS,
-      "sendMessage"
-    );
+    const sendAll = async () => {
+      for (const t of recipients) {
+        await client.sendMessage(t, String(message));
+      }
+    };
+    try {
+      await withTimeout(sendAll(), SEND_TIMEOUT_MS, "sendMessage");
+    } catch (err) {
+      if (err.message.includes("Target closed") || err.message.includes("TargetCloseError")) {
+        console.error("[gateway] browser tidak stabil saat kirim, coba sekali lagi:", err.message);
+        await new Promise((r) => setTimeout(r, 1500));
+        await withTimeout(sendAll(), SEND_TIMEOUT_MS, "sendMessage");
+      } else {
+        throw err;
+      }
+    }
     sendJson(res, { status: "sent", to: recipients.length });
   } catch (err) {
     console.error("[gateway] kirim pesan gagal:", err.message);
@@ -153,6 +164,14 @@ app.post("/send", async (req, res) => {
         res,
         { error: "kirim timeout, link WhatsApp diduga mati; restart otomatis dijalankan" },
         504
+      );
+    }
+    if (err.message.includes("Target closed") || err.message.includes("TargetCloseError")) {
+      scheduleRestart("kirim gagal — browser crash (Target closed)");
+      return sendJson(
+        res,
+        { error: "browser WhatsApp crash saat kirim; restart otomatis dijalankan" },
+        500
       );
     }
     sendJson(res, { error: String(err) }, 500);
@@ -251,12 +270,12 @@ async function startClient() {
       store: backendStore,
       clientId: null,
       dataPath: DATA_PATH,
-      backupSyncIntervalMs: 60000,
+      backupSyncIntervalMs: 30000,
     }),
     deviceName: DEVICE_NAME,
     browserName: DEVICE_NAME,
     puppeteer: process.env.CHROMIUM_PATH
-      ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"], executablePath: process.env.CHROMIUM_PATH }
+      ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu", "--no-first-run", "--disable-extensions"], executablePath: process.env.CHROMIUM_PATH }
       : { headless: true },
   };
 
