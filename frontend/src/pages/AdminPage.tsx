@@ -33,7 +33,7 @@ type Tab = "dashboard" | "requests";
 
 export default function AdminPage() {
   const navigate = useNavigate();
-  const { latest, history, wa, notify, thresholds, error } = useDashboardData();
+  const { latest, history, wa, notify, thresholds, error, refresh } = useDashboardData();
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY),
   );
@@ -301,6 +301,7 @@ export default function AdminPage() {
           token={token}
           thresholds={thresholds}
           latest={latest}
+          onSimulated={() => refresh()}
           onClose={() => setSimulateOpen(false)}
         />
       )}

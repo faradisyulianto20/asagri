@@ -24,11 +24,13 @@ export function SimulatePage({
   token,
   thresholds,
   latest,
+  onSimulated,
   onClose,
 }: {
   token: string;
   thresholds: Thresholds | null;
   latest: LatestData | null;
+  onSimulated?: () => void;
   onClose: () => void;
 }) {
   const [temp, setTemp] = useState(30);
@@ -65,6 +67,7 @@ export function SimulatePage({
     try {
       const r = await simulateReading(token, temp, hum);
       setResult(r);
+      onSimulated?.();
       toast.success(
         `Simulasi terkirim: ${temp.toFixed(1)}°C / ${hum.toFixed(1)}%`,
       );

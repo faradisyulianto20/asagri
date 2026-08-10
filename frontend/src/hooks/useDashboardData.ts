@@ -15,6 +15,17 @@ import type {
   WaStatus,
 } from "../api";
 
+function formatNumber(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return raw;
+  if (digits.startsWith("62")) {
+    const rest = digits.slice(2);
+    const groups = [rest.slice(0, 3), rest.slice(3, 7), rest.slice(7)].filter(Boolean);
+    return `+62 ${groups.join("-")}`;
+  }
+  return `+${digits}`;
+}
+
 export function useDashboardData() {
   const [latest, setLatest] = useState<LatestData | null>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
@@ -24,6 +35,24 @@ export function useDashboardData() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const hadError = useRef(false);
+  const prevWa = useRef<WaStatus | null>(null);
+
+  useEffect(() => {
+    const prev = prevWa.current;
+    if (prev && wa) {
+      if (!prev.connected && wa.connected) {
+        const number = wa.number ? formatNumber(wa.number) : null;
+        toast.success(
+          number
+            ? `WhatsApp terhubung · Pengirim: ${number}`
+            : "WhatsApp terhubung",
+        );
+      } else if (!wa.connected && wa.error && prev.error !== wa.error) {
+        toast.error(`WhatsApp gagal terhubung: ${wa.error}`);
+      }
+    }
+    prevWa.current = wa;
+  }, [wa]);
 
   const refresh = useCallback(async () => {
     try {
@@ -62,5 +91,5 @@ export function useDashboardData() {
     return () => clearInterval(id);
   }, [refresh]);
 
-  return { latest, history, wa, notify, thresholds, error, loading };
+  return { latest, history, wa, notify, thresholds, error, loading, refresh };
 }

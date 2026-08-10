@@ -9,6 +9,7 @@ const AUTH_TOKEN = process.env.AUTH_TOKEN || "ganti-token-gateway";
 const BACKEND_URL = (process.env.BACKEND_URL || "").replace(/\/$/, "");
 const BACKEND_TOKEN = process.env.BACKEND_TOKEN || "";
 const DATA_PATH = process.env.DATA_PATH || path.resolve("./.wwebjs_auth");
+const DEVICE_NAME = process.env.DEVICE_NAME || "Asagri Monitor";
 
 const SEND_TIMEOUT_MS = 25000;
 const HEALTH_CHECK_MS = 60000;
@@ -18,9 +19,10 @@ fs.mkdirSync(DATA_PATH, { recursive: true });
 
 let client = null;
 let qrDataUrl = null;
-let status = { connected: false, registered: false, number: null, starting: true };
+let status = { connected: false, registered: false, number: null, starting: true, error: null };
 let restarting = false;
 let lastRestartAttempt = 0;
+let intentionalDisconnect = false;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -47,7 +49,7 @@ function scheduleRestart(reason) {
   const current = client;
   client = null;
   qrDataUrl = null;
-  status = { connected: false, registered: false, number: null, starting: true };
+  status = { connected: false, registered: false, number: null, starting: true, error: null };
   const bounded = (promise) =>
     Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
   (current
@@ -163,10 +165,11 @@ app.post("/disconnect", (req, res) => {
 
   restarting = false;
   lastRestartAttempt = 0;
+  intentionalDisconnect = true;
   const current = client;
   client = null;
   qrDataUrl = null;
-  status = { connected: false, registered: false, number: null, starting: false };
+  status = { connected: false, registered: false, number: null, starting: false, error: null };
 
   // Balas seketika; pembersihan & restart dijalankan di background
   sendJson(res, { status: "disconnected" });
@@ -192,6 +195,18 @@ app.get("/", (_req, res) => {
 
 app.get("/status", (_req, res) => {
   sendJson(res, { ...status, qr: status.connected ? null : qrDataUrl });
+});
+
+app.get("/env", (_req, res) => {
+  sendJson(res, {
+    port: PORT,
+    auth_token_set: Boolean(process.env.AUTH_TOKEN),
+    backend_url_set: Boolean(process.env.BACKEND_URL),
+    backend_token_set: Boolean(process.env.BACKEND_TOKEN),
+    backend_url: process.env.BACKEND_URL || null,
+    chromium_set: Boolean(process.env.CHROMIUM_PATH),
+    data_path: DATA_PATH,
+  });
 });
 
 async function saveNumber(number) {
@@ -238,6 +253,7 @@ async function startClient() {
       dataPath: DATA_PATH,
       backupSyncIntervalMs: 60000,
     }),
+    deviceName: DEVICE_NAME,
     puppeteer: process.env.CHROMIUM_PATH
       ? { headless: true, args: ["--no-sandbox", "--disable-setuid-sandbox"], executablePath: process.env.CHROMIUM_PATH }
       : { headless: true },
@@ -252,7 +268,15 @@ async function startClient() {
       qrDataUrl = null;
     }
     status.connected = false;
+    status.error = null;
     console.log("[gateway] QR baru tersedia, scan lewat dashboard");
+  });
+
+  client.on("auth_failure", (msg) => {
+    status.connected = false;
+    status.registered = false;
+    status.error = msg ? `Link gagal: ${msg}` : "Link gagal";
+    console.error("[gateway] auth failure:", msg);
   });
 
   client.on("ready", async () => {
@@ -260,6 +284,7 @@ async function startClient() {
     status.connected = state === "CONNECTED";
     status.starting = false;
     status.number = client.info.wid.user;
+    status.error = null;
     console.log(
       "[gateway] whatsapp siap, nomor:",
       client.info.wid.user,
@@ -276,6 +301,13 @@ async function startClient() {
   client.on("disconnected", (reason) => {
     status.connected = false;
     status.registered = false;
+    if (intentionalDisconnect) {
+      intentionalDisconnect = false;
+      status.error = null;
+      console.log("[gateway] terputus disengaja:", reason);
+      return;
+    }
+    status.error = `Terputus: ${reason}`;
     console.error("[gateway] terputus:", reason);
     setTimeout(() => scheduleRestart(`terputus: ${reason}`), 10000);
   });
