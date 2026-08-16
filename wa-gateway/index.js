@@ -16,6 +16,8 @@ const HEALTH_CHECK_MS = 60000;
 const HEALTH_FAILURE_THRESHOLD = 3;
 const RESTART_MIN_INTERVAL_MS = 30000;
 const BACKUP_SYNC_MS = parseInt(process.env.BACKUP_SYNC_MS || "3600000", 10);
+const TEARDOWN_TIMEOUT_MS = 25000;
+const MAX_LOGOUT_STREAK = 3;
 
 fs.mkdirSync(DATA_PATH, { recursive: true });
 
@@ -23,11 +25,13 @@ let client = null;
 let qrDataUrl = null;
 let status = { connected: false, registered: false, number: null, starting: true, error: null };
 let restarting = false;
+let starting = false;
 let lastRestartAttempt = 0;
 let intentionalDisconnect = false;
 let healthFailures = 0;
 let restartCount = 0;
 let lastRestartReason = null;
+let bootLogoutStreak = 0;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -38,13 +42,21 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-function scheduleRestart(reason) {
-  if (!client) return;
+async function teardown(current) {
+  if (!current) return;
+  try {
+    await withTimeout(current.destroy(), TEARDOWN_TIMEOUT_MS, "destroy");
+  } catch (err) {
+    console.error("[gateway] destroy gagal/terganggu:", err.message);
+  }
+}
+
+function scheduleRestart(reason, force = false) {
   if (restarting) {
     console.log("[gateway] restart sudah berjalan, abaikan:", reason);
     return;
   }
-  if (Date.now() - lastRestartAttempt < RESTART_MIN_INTERVAL_MS) {
+  if (!force && Date.now() - lastRestartAttempt < RESTART_MIN_INTERVAL_MS) {
     console.warn("[gateway] restart diblokir (cooldown), alasan:", reason);
     return;
   }
@@ -58,15 +70,67 @@ function scheduleRestart(reason) {
   qrDataUrl = null;
   healthFailures = 0;
   status = { connected: false, registered: false, number: null, starting: true, error: null };
-  const bounded = (promise) =>
-    Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
-  (current
-    ? bounded(current.destroy().catch((err) => console.error("[gateway] destroy gagal:", err.message)))
-    : Promise.resolve()
-  ).finally(() => {
+  teardown(current).finally(() => {
     restarting = false;
     startClient();
   });
+}
+
+function crashRecover(reason) {
+  try {
+    if (restarting) {
+      if (client) {
+        console.error("[gateway] crash saat restart berjalan, diabaikan:", reason);
+        return;
+      }
+      // flag restart macet (client sudah null) — paksa pulih
+      restarting = false;
+      lastRestartAttempt = 0;
+    }
+    scheduleRestart(reason, true);
+  } catch (err) {
+    console.error("[gateway] crashRecover gagal:", err.message);
+  }
+}
+
+process.on("unhandledRejection", (reason) => {
+  const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
+  console.error("[gateway] unhandledRejection:", msg);
+  crashRecover(`unhandledRejection: ${reason instanceof Error ? reason.message : String(reason)}`);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[gateway] uncaughtException:", err);
+  crashRecover(`uncaughtException: ${err.message}`);
+});
+
+process.on("SIGTERM", () => {
+  console.log("[gateway] SIGTERM diterima, menutup client…");
+  if (client) {
+    client.destroy().catch((err) => console.error("[gateway] destroy SIGTERM gagal:", err.message));
+  }
+  process.exit(0);
+});
+
+async function clearSessionCompletely() {
+  for (const p of [
+    path.join(DATA_PATH, "RemoteAuth"),
+    path.join(DATA_PATH, "RemoteAuth.zip"),
+  ]) {
+    try {
+      await fs.promises.rm(p, { recursive: true, force: true });
+    } catch (err) {
+      console.error("[gateway] gagal hapus file sesi lokal:", p, err.message);
+    }
+  }
+  if (BACKEND_URL && BACKEND_TOKEN) {
+    try {
+      const res = await apiCall("/api/wa/session", { method: "DELETE" });
+      console.log("[gateway] sesi dihapus dari database", res.ok ? "" : `(status ${res.status})`);
+    } catch (err) {
+      console.error("[gateway] gagal hapus sesi dari database:", err.message);
+    }
+  }
 }
 
 async function apiCall(urlPath, options = {}) {
@@ -93,6 +157,10 @@ const backendStore = {
     if (!BACKEND_URL || !BACKEND_TOKEN) return;
     try {
       const zipPath = path.join(DATA_PATH, `${session}.zip`);
+      if (!fs.existsSync(zipPath)) {
+        console.warn("[gateway] zip sesi tidak ada saat cadangan:", zipPath);
+        return;
+      }
       const zip = await fs.promises.readFile(zipPath);
       const res = await apiCall("/api/wa/session", {
         method: "POST",
@@ -112,7 +180,12 @@ const backendStore = {
       if (!res.ok) return;
       const body = await res.json();
       if (!body.available || !body.data) return;
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
       await fs.promises.writeFile(destPath, Buffer.from(body.data, "base64"));
+      if (!fs.existsSync(destPath)) {
+        console.error("[gateway] zip sesi gagal ditulis:", destPath);
+        return;
+      }
       console.log("[gateway] sesi dipulihkan dari database");
     } catch (err) {
       console.error("[gateway] gagal ambil sesi dari database:", err.message);
@@ -155,7 +228,8 @@ app.post("/send", async (req, res) => {
     try {
       await withTimeout(sendAll(), SEND_TIMEOUT_MS, "sendMessage");
     } catch (err) {
-      if (err.message.includes("Target closed") || err.message.includes("TargetCloseError")) {
+      const unstable = (err.message || "").match(/Target closed|TargetCloseError|detached|Frame/i);
+      if (unstable) {
         console.error("[gateway] browser tidak stabil saat kirim, coba sekali lagi:", err.message);
         await new Promise((r) => setTimeout(r, 1500));
         await withTimeout(sendAll(), SEND_TIMEOUT_MS, "sendMessage");
@@ -166,7 +240,8 @@ app.post("/send", async (req, res) => {
     sendJson(res, { status: "sent", to: recipients.length });
   } catch (err) {
     console.error("[gateway] kirim pesan gagal:", err.message);
-    if (err.message.includes("timed out")) {
+    const msg = err.message || String(err);
+    if (msg.includes("timed out")) {
       scheduleRestart("sendMessage timeout — link WhatsApp diduga mati");
       return sendJson(
         res,
@@ -174,7 +249,7 @@ app.post("/send", async (req, res) => {
         504
       );
     }
-    if (err.message.includes("Target closed") || err.message.includes("TargetCloseError")) {
+    if (msg.match(/Target closed|TargetCloseError/)) {
       scheduleRestart("kirim gagal — browser crash (Target closed)");
       return sendJson(
         res,
@@ -182,6 +257,39 @@ app.post("/send", async (req, res) => {
         500
       );
     }
+    if (msg.match(/detached|Frame/i)) {
+      scheduleRestart("kirim gagal — frame WhatsApp terlepas (page reload)");
+      return sendJson(
+        res,
+        { error: "halaman WhatsApp me-reload; restart otomatis dijalankan", retry: true },
+        503
+      );
+    }
+    sendJson(res, { error: String(err) }, 500);
+  }
+});
+
+app.post("/invite", async (req, res) => {
+  const auth = req.headers.authorization || "";
+  if (auth !== `Bearer ${AUTH_TOKEN}`) return sendJson(res, { error: "unauthorized" }, 401);
+  const { code } = req.body || {};
+  if (!code) return sendJson(res, { error: "code wajib" }, 400);
+  if (!client || !status.connected) return sendJson(res, { error: "whatsapp belum terhubung" }, 503);
+  try {
+    const info = await withTimeout(client.getInviteInfo(String(code)), 25000, "getInviteInfo");
+    const rawId = info && (info.gid || info.id);
+    const id =
+      rawId && typeof rawId === "object" && rawId._serialized
+        ? String(rawId._serialized)
+        : rawId
+          ? String(rawId)
+          : null;
+    if (!id || !id.includes("@g.us")) {
+      return sendJson(res, { error: "link undangan tidak valid atau kedaluwarsa" }, 400);
+    }
+    sendJson(res, { id, name: info.title || info.name || null });
+  } catch (err) {
+    console.error("[gateway] resolve undangan grup gagal:", err.message);
     sendJson(res, { error: String(err) }, 500);
   }
 });
@@ -203,17 +311,16 @@ app.post("/disconnect", (req, res) => {
   sendJson(res, { status: "disconnected" });
   console.log("[gateway] sesi diputus, QR baru akan dibuat");
 
-  const bounded = (promise) =>
-    Promise.race([promise, new Promise((r) => setTimeout(r, 8000))]);
-
   if (current) {
-    bounded(current.logout().catch((err) => console.error("[gateway] logout gagal:", err.message)))
+    withTimeout(current.logout(), TEARDOWN_TIMEOUT_MS, "logout")
+      .catch((err) => console.error("[gateway] logout gagal:", err.message))
       .finally(() =>
-        bounded(current.destroy().catch((err) => console.error("[gateway] destroy gagal:", err.message)))
-      )
-      .finally(() => startClient());
+        teardown(current).finally(() => {
+          clearSessionCompletely().finally(() => startClient());
+        })
+      );
   } else {
-    setTimeout(startClient, 1000);
+    clearSessionCompletely().finally(() => startClient());
   }
 });
 
@@ -290,6 +397,19 @@ async function checkHealth() {
 setInterval(checkHealth, HEALTH_CHECK_MS);
 
 async function startClient() {
+  if (starting) {
+    console.log("[gateway] startClient dilewati (start lain sedang berjalan)");
+    return;
+  }
+  starting = true;
+  try {
+    await createClient();
+  } finally {
+    starting = false;
+  }
+}
+
+async function createClient() {
   const CHROME_ARGS = [
     "--no-sandbox",
     "--disable-setuid-sandbox",
@@ -343,6 +463,7 @@ async function startClient() {
   });
 
   client.on("ready", async () => {
+    bootLogoutStreak = 0;
     const state = await getStateSafe();
     status.registered = true;
     status.starting = false;
@@ -381,6 +502,20 @@ async function startClient() {
     }
     status.error = `Terputus: ${reason}`;
     console.error("[gateway] terputus:", reason);
+
+    // LOGOUT berulang = sesi kemungkinan mati di sisi server.
+    // Setelah beberapa kali, bersihkan sesi total & siapkan QR agar tidak
+    // terjebak loop restore → LOGOUT.
+    if (String(reason).toUpperCase().includes("LOGOUT") || String(reason).toLowerCase().includes("logged")) {
+      bootLogoutStreak += 1;
+      console.error(`[gateway] LOGOUT ke-${bootLogoutStreak}/${MAX_LOGOUT_STREAK}`);
+      if (bootLogoutStreak >= MAX_LOGOUT_STREAK) {
+        bootLogoutStreak = 0;
+        console.error("[gateway] LOGOUT berulang, sesi dihapus total; QR baru akan disiapkan");
+        clearSessionCompletely().finally(() => scheduleRestart("LOGOUT berulang — sesi dihapus", true));
+        return;
+      }
+    }
     setTimeout(() => scheduleRestart(`terputus: ${reason}`), 10000);
   });
 

@@ -65,8 +65,8 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 4. Session otomatis tersimpan (volume + cadangan di Supabase), jadi tidak perlu scan ulang sering-sering.
 5. Untuk mengganti nomor pengirim: klik **"Putuskan & Ganti Nomor"** di kartu WhatsApp Gateway (butuh password admin) → QR baru muncul otomatis.
 
-> Hanya **satu** nomor pengirim yang bisa tertaut. Penerima notifikasi bisa **banyak nomor**,
-> diatur di menu **Pengaturan** (pisahkan dengan koma).
+> Hanya **satu** nomor pengirim yang bisa tertaut. Penerima notifikasi bisa **banyak nomor dan group WhatsApp**,
+> diatur di menu **Pengaturan** (pisahkan dengan koma) atau lewat daftar permintaan (persetujuan admin).
 
 ## 4b. Fitur dashboard (dari browser)
 
@@ -75,6 +75,10 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 - **Pengaturan** (admin): daftar nomor penerima WhatsApp (banyak nomor, dipisah koma), teks pesan notifikasi
   (placeholder: `{temperature}`, `{humidity}`, `{threshold}`), dan jeda antar notifikasi. Ambang suhu/kelembaban
   ditampilkan *read-only* karena sudah pakem di firmware ESP32.
+- **Daftar penerima** (publik, tanpa login): kartu "Daftarkan Penerima Notifikasi" di beranda — mode **Nomor**
+  (isi nomor WhatsApp) atau **Group** (isi *link undangan group*, mis. `https://chat.whatsapp.com/xxxx`).
+  Link undangan di-resolve otomatis jadi ID group (`…@g.us`) oleh gateway, lalu menunggu persetujuan admin.
+  Cara ambil link: buka group di WhatsApp → Info → Undang lewat link → Salin tautan.
 - **Simulasi** (admin): kirim suhu & kelembaban "paksa" ke server untuk menguji ambang dan notifikasi tanpa
   menyentuh ESP32. Data simulasi ditandai `source="simulasi"` dan tampil sebagai chip "Data Simulasi" di dashboard.
 - **Login admin** (username + password dari `ADMIN_USERNAME`/`ADMIN_PASSWORD`): dashboard tetap terbuka untuk umum,
@@ -147,3 +151,39 @@ cd frontend && npm run build
 - Login admin (username + password) menghasilkan token sesi (di-hash di tabel `admin_sessions`); header `X-Admin-Token`
   dipakai untuk `/api/settings`, `/api/simulate`, `/api/wa/disconnect`, dan endpoint `auth`.
 - whatsapp-web.js **tidak resmi** — ada risiko nomor diblokir. Gunakan nomor cadangan jika memungkinkan.
+
+## Troubleshooting / Debug
+
+### Gateway WhatsApp tidak stabil (restart berulang, "detached Frame", crash)
+
+- Cek log gateway di Railway, cari kata kunci: `RESTART karena`, `unhandledRejection`,
+  `uncaughtException`, `detached`, `terputus`, `LOGOUT`.
+- Cek status langsung: `curl https://<gateway-url>/status` → lihat `connected`, `number`,
+  `restartCount`, `lastRestartReason`. Endpoint `/env` menampilkan konfigurasi yang dibaca proses.
+- Restart berulang dengan `LOGOUT` (beberapa kali beruntun) = sesi mati di sisi WhatsApp →
+  gateway otomatis menghapus sesi & menampilkan QR baru; **scan ulang** di dashboard
+  (nomor pengirim → Menu → Perangkat tertaut).
+- Jika `kirim pesan gagal: detached Frame` berulang: halaman WhatsApp Web me-reload;
+  gateway kini otomatis me-restart lebih cepat (jangan menunggu health-check).
+- Pastikan `BACKEND_URL`/`BACKEND_TOKEN` gateway mengarah ke backend yang sama dengan
+  `WA_AUTH_TOKEN`/`API_TOKEN`; kalau salah, session tidak tersimpan di database.
+
+### Fitur group WhatsApp tidak bekerja
+
+1. Pastikan gateway **terhubung** (kartu WhatsApp Gateway di dashboard = "Terhubung");
+   resolve link undangan butuh gateway aktif.
+2. Kirim link undangan yang benar (`https://chat.whatsapp.com/xxxx`, bukan ID group atau URL lain).
+3. Uji langsung endpoint gateway:
+   ```bash
+   curl -X POST https://<gateway-url>/invite \
+     -H "Authorization: Bearer <AUTH_TOKEN>" \
+     -H "Content-Type: application/json" \
+     -d '{"code":"KODE_DARI_LINK"}'
+   ```
+   - Berhasil → `{ "id": "120363…@g.us", "name": "Nama Group" }`.
+   - `link undangan tidak valid` → link salah/kedaluwarsa.
+   - `whatsapp belum terhubung` → gateway belum connected.
+4. Setelah disetujui admin, pesan selamat datang dikirim **ke group** — kalau tidak muncul,
+   cek status pengiriman terakhir di kartu WhatsApp Gateway / endpoint `/api/notify/status`.
+5. Kirim manual untuk verifikasi: isi ID group (`…@g.us`) ke kolom "Nomor penerima" di
+   **Pengaturan**, lalu tombol **Kirim Pesan Uji**.

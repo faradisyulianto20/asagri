@@ -84,6 +84,7 @@ export interface WaRequest {
   id: number;
   name: string;
   number: string;
+  kind?: "number" | "group";
   status: "pending" | "approved" | "rejected";
   created_at?: string;
   decided_at?: string | null;
@@ -94,6 +95,7 @@ export interface NumberRequestResult {
   status: "pending" | "approved";
   name: string;
   number: string;
+  kind?: "number" | "group";
   message: string;
 }
 
@@ -217,10 +219,26 @@ export async function submitNumberRequest(
   name: string,
   number: string,
 ): Promise<NumberRequestResult> {
+  return submitRequest({ name, kind: "number", number });
+}
+
+export async function submitGroupRequest(
+  name: string,
+  link: string,
+): Promise<NumberRequestResult> {
+  return submitRequest({ name, kind: "group", link });
+}
+
+async function submitRequest(body: {
+  name: string;
+  kind: "number" | "group";
+  number?: string;
+  link?: string;
+}): Promise<NumberRequestResult> {
   const res = await fetch("/api/wa/request", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, number }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     let detail = "";
@@ -236,10 +254,15 @@ export async function submitNumberRequest(
 
 export async function fetchRequestStatus(
   number: string,
-): Promise<{ status: "none" | "pending" | "approved" | "rejected"; name?: string }> {
+): Promise<{
+  status: "none" | "pending" | "approved" | "rejected";
+  name?: string;
+  kind?: "number" | "group";
+}> {
   return getJson<{
     status: "none" | "pending" | "approved" | "rejected";
     name?: string;
+    kind?: "number" | "group";
   }>(`/api/wa/request/status?number=${encodeURIComponent(number)}`);
 }
 

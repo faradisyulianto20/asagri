@@ -116,10 +116,12 @@ export function AdminSettings({
               rows={2}
               value={form.whatsapp_to}
               onChange={(e) => set("whatsapp_to", e.target.value)}
-              placeholder="6281111111111, 6282222222222"
+              placeholder="6281111111111, 12036301234567890@g.us"
             />
             <p className="text-xs text-muted-foreground">
-              Format internasional tanpa tanda + dan tanpa awalan 0.
+              Format internasional tanpa tanda + dan tanpa awalan 0. Bisa
+              ditambah ID group (…@g.us) — group juga bisa didaftarkan user lewat
+              link undangan di beranda.
             </p>
             {hasPlaceholder && (
               <p className="text-xs font-semibold text-destructive">

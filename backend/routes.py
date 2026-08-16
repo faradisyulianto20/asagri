@@ -1,5 +1,6 @@
 import anyio
 import json
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -291,6 +292,7 @@ def _gateway_request(
     *,
     timeout: float = 30,
     retries: int = 2,
+    json_body: dict | None = None,
 ) -> httpx.Response:
     """Hubungi wa-gateway dengan retry singkat untuk error transien (cold-start).
 
@@ -298,12 +300,16 @@ def _gateway_request(
     """
     url = _gateway_url(path)
     headers = {"Authorization": f"Bearer {settings.wa_auth_token}"}
+    if json_body is not None:
+        headers["Content-Type"] = "application/json"
     last_resp: httpx.Response | None = None
     for attempt in range(retries):
         if attempt:
             time.sleep(1)
         try:
-            resp = httpx.request(method, url, headers=headers, timeout=timeout)
+            resp = httpx.request(
+                method, url, headers=headers, timeout=timeout, json=json_body
+            )
         except (httpx.ConnectTimeout, httpx.ReadTimeout, httpx.ConnectError) as exc:
             if attempt < retries - 1:
                 continue
@@ -448,7 +454,9 @@ def delete_wa_session(db: Session = Depends(get_db)) -> dict:
 
 class NumberRequestPayload(BaseModel):
     name: str
-    number: str
+    number: str | None = None
+    kind: str = "number"
+    link: str | None = None
 
 
 def _normalize_number(number: str) -> str:
@@ -464,14 +472,85 @@ def _valid_number(number: str) -> bool:
     return number.startswith("628") and len(number) >= 10 and len(number) <= 15 and number.isdigit()
 
 
+def _extract_invite_code(link: str) -> str | None:
+    match = re.search(r"chat\.whatsapp\.com/([A-Za-z0-9_-]+)", link.strip())
+    return match.group(1) if match else None
+
+
+def _resolve_group_invite(code: str) -> dict:
+    resp = _gateway_request("POST", "/invite", timeout=30, retries=2, json_body={"code": code})
+    if resp.status_code >= 400:
+        detail = _gateway_detail(resp) or f"gateway HTTP {resp.status_code}"
+        raise HTTPException(status_code=502, detail=f"Gateway menolak resolve undangan: {detail}")
+    try:
+        body = resp.json()
+    except ValueError:
+        raise HTTPException(status_code=502, detail="Respons gateway bukan JSON")
+    if not body.get("id"):
+        raise HTTPException(
+            status_code=400,
+            detail="Link undangan tidak valid atau sudah kedaluwarsa.",
+        )
+    return {"id": str(body["id"]), "name": body.get("name")}
+
+
 @router.post("/api/wa/request")
 def submit_number_request(
     payload: NumberRequestPayload, db: Session = Depends(get_db)
 ) -> dict:
     name = payload.name.strip()
-    number = _normalize_number(payload.number)
     if not name:
         raise HTTPException(status_code=400, detail="Nama tidak boleh kosong")
+
+    if payload.kind == "group":
+        link = (payload.link or "").strip()
+        code = _extract_invite_code(link)
+        if not code:
+            raise HTTPException(
+                status_code=400,
+                detail="Link undangan tidak valid. Gunakan link chat.whatsapp.com/xxxx.",
+            )
+        try:
+            resolved = _resolve_group_invite(code)
+        except HTTPException as exc:
+            if exc.status_code in (502, 503):
+                raise HTTPException(
+                    status_code=502,
+                    detail="Gateway WhatsApp sedang tidak tersedia. Coba lagi beberapa saat.",
+                )
+            raise
+        group_id = resolved["id"]
+        group_name = resolved.get("name") or name
+
+        row = db.scalar(
+            select(WaNumberRequest).where(WaNumberRequest.number == group_id)
+        )
+        if row is not None and row.status == "approved":
+            return {
+                "status": "approved",
+                "name": group_name,
+                "number": group_id,
+                "kind": "group",
+                "message": "Group ini sudah terdaftar sebagai penerima notifikasi.",
+            }
+        if row is None:
+            row = WaNumberRequest(name=name, number=group_id, status="pending", kind="group")
+            db.add(row)
+        else:
+            row.name = name
+            row.status = "pending"
+            row.decided_at = None
+            row.decided_by = None
+        db.commit()
+        return {
+            "status": "pending",
+            "name": group_name,
+            "number": group_id,
+            "kind": "group",
+            "message": f"Group '{group_name}' ditemukan. Permintaan menunggu persetujuan admin.",
+        }
+
+    number = _normalize_number(payload.number or "")
     if not _valid_number(number):
         raise HTTPException(
             status_code=400,
@@ -486,10 +565,11 @@ def submit_number_request(
             "status": "approved",
             "name": row.name,
             "number": row.number,
+            "kind": "number",
             "message": "Nomor ini sudah terdaftar sebagai penerima notifikasi.",
         }
     if row is None:
-        row = WaNumberRequest(name=name, number=number, status="pending")
+        row = WaNumberRequest(name=name, number=number, status="pending", kind="number")
         db.add(row)
     else:
         row.name = name
@@ -501,13 +581,17 @@ def submit_number_request(
         "status": "pending",
         "name": row.name,
         "number": row.number,
+        "kind": "number",
         "message": "Permintaan dikirim dan menunggu persetujuan admin.",
     }
 
 
 @router.get("/api/wa/request/status")
 def number_request_status(number: str, db: Session = Depends(get_db)) -> dict:
-    normalized = _normalize_number(number)
+    if "@g.us" in number:
+        normalized = number.strip()
+    else:
+        normalized = _normalize_number(number)
     if not normalized:
         return {"status": "none", "number": number}
     row = db.scalar(
@@ -519,6 +603,7 @@ def number_request_status(number: str, db: Session = Depends(get_db)) -> dict:
         "status": row.status,
         "name": row.name,
         "number": row.number,
+        "kind": row.kind,
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
     }
 
@@ -528,6 +613,7 @@ def _request_dict(row: WaNumberRequest) -> dict:
         "id": row.id,
         "name": row.name,
         "number": row.number,
+        "kind": row.kind,
         "status": row.status,
         "created_at": row.created_at.isoformat(),
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
@@ -570,9 +656,13 @@ def approve_number_request(
 
     delivery_ok = notifier.send_to(
         row.number,
-        "✅ Halo "
-        + row.name
-        + ",\nNomor WhatsApp Anda sudah disetujui dan akan menerima notifikasi dari Asagri Monitor.",
+        (
+            "✅ Group ini terdaftar dan akan menerima notifikasi dari Asagri Monitor."
+            if row.kind == "group"
+            else "✅ Halo "
+            + row.name
+            + ",\nNomor WhatsApp Anda sudah disetujui dan akan menerima notifikasi dari Asagri Monitor."
+        ),
     )
     return {**_request_dict(row), "confirmation_sent": delivery_ok}
 
@@ -634,6 +724,10 @@ def _migrate(engine) -> None:
                     "ALTER TABLE wa_session "
                     "ADD COLUMN IF NOT EXISTS number VARCHAR(32)"
                 )
+                conn.exec_driver_sql(
+                    "ALTER TABLE wa_number_requests "
+                    "ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'number'"
+                )
             else:
                 cols = conn.exec_driver_sql("PRAGMA table_info(sensor_readings)").fetchall()
                 names = {row[1] for row in cols}
@@ -647,6 +741,13 @@ def _migrate(engine) -> None:
                 if "number" not in wa_names:
                     conn.exec_driver_sql(
                         "ALTER TABLE wa_session ADD COLUMN number VARCHAR(32)"
+                    )
+                req_cols = conn.exec_driver_sql("PRAGMA table_info(wa_number_requests)").fetchall()
+                req_names = {row[1] for row in req_cols}
+                if "kind" not in req_names:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE wa_number_requests "
+                        "ADD COLUMN kind VARCHAR(16) NOT NULL DEFAULT 'number'"
                     )
     except Exception as exc:  # noqa: BLE001
         print(f"[backend] migrasi dilewati: {exc}")

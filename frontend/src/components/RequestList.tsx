@@ -5,6 +5,7 @@ import {
   Clock3,
   Loader2,
   RefreshCw,
+  Users,
   X,
   XCircle,
   Inbox,
@@ -59,10 +60,16 @@ export function RequestList({ token }: { token: string }) {
     try {
       if (kind === "approve") {
         const res = await approveWaRequest(token, id);
-        toast.success(`Nomor ${res.number} disetujui`);
+        toast.success(
+          res.kind === "group"
+            ? `Group ${res.name} disetujui`
+            : `Nomor ${res.number} disetujui`,
+        );
         if (res.confirmation_sent === false) {
           toast.warning(
-            "Disetujui, tapi pesan konfirmasi gagal terkirim ke nomor tersebut",
+            res.kind === "group"
+              ? "Disetujui, tapi pesan konfirmasi gagal terkirim ke group tersebut"
+              : "Disetujui, tapi pesan konfirmasi gagal terkirim ke nomor tersebut",
           );
         }
       } else {
@@ -93,7 +100,8 @@ export function RequestList({ token }: { token: string }) {
               )}
             </CardTitle>
             <CardDescription className="mt-1">
-              Setujui atau tolak permintaan nomor penerima notifikasi.
+              Setujui atau tolak permintaan penerima notifikasi (nomor &amp;
+              group WhatsApp).
             </CardDescription>
           </div>
           <Button
@@ -130,6 +138,12 @@ export function RequestList({ token }: { token: string }) {
                 <span className="font-heading text-[15px] font-bold">
                   {r.name}
                 </span>
+                {r.kind === "group" && (
+                  <Badge className="h-6 gap-1 rounded-full bg-secondary/10 px-2.5 text-secondary">
+                    <Users className="size-3" />
+                    Group
+                  </Badge>
+                )}
                 <Badge className={`h-6 rounded-full px-2.5 ${STATUS_META[r.status].className}`}>
                   {r.status === "approved" && <CheckCircle2 className="size-3" />}
                   {r.status === "pending" && <Clock3 className="size-3" />}

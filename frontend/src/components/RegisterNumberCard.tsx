@@ -4,14 +4,20 @@ import {
   BellRing,
   CheckCircle2,
   Clock3,
+  Link2,
   Loader2,
   Search,
   Send,
   User,
+  Users,
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { fetchRequestStatus, submitNumberRequest } from "../api";
+import {
+  fetchRequestStatus,
+  submitGroupRequest,
+  submitNumberRequest,
+} from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,32 +47,43 @@ const STATUS_META = {
 } as const;
 
 type Mode = "register" | "status";
+type ReqType = "number" | "group";
 
 export function RegisterNumberCard() {
   const [mode, setMode] = useState<Mode>("register");
+  const [reqType, setReqType] = useState<ReqType>("number");
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ status: string; message: string } | null>(null);
 
   const [name, setName] = useState("");
   const [number, setNumber] = useState("");
+  const [link, setLink] = useState("");
   const [checkNumber, setCheckNumber] = useState("");
   const [status, setStatus] = useState<keyof typeof STATUS_META | null>(null);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (busy || !name.trim() || !number.trim()) return;
+    if (busy || !name.trim()) return;
+    if (reqType === "group" && !link.trim()) return;
+    if (reqType === "number" && !number.trim()) return;
     setBusy(true);
     setResult(null);
     try {
-      const res = await submitNumberRequest(name, number);
+      const res =
+        reqType === "group"
+          ? await submitGroupRequest(name, link)
+          : await submitNumberRequest(name, number);
       setResult({ status: res.status, message: res.message });
       toast.success(
         res.status === "approved"
-          ? "Nomor sudah terdaftar sebagai penerima"
+          ? reqType === "group"
+            ? "Group sudah terdaftar sebagai penerima"
+            : "Nomor sudah terdaftar sebagai penerima"
           : "Permintaan dikirim, menunggu persetujuan admin",
       );
       setName("");
       setNumber("");
+      setLink("");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Gagal mengirim permintaan";
       toast.error(msg);
@@ -97,11 +114,11 @@ export function RegisterNumberCard() {
           <div>
             <CardTitle className="flex items-center gap-2">
               <BellRing className="size-4 text-primary" />
-              Daftarkan Nomor WhatsApp
+              Daftarkan Penerima Notifikasi
             </CardTitle>
             <CardDescription className="mt-1">
-              Daftarkan nomor Anda untuk menerima notifikasi suhu &amp;
-              kelembaban ruangan.
+              Daftarkan nomor WhatsApp atau group untuk menerima notifikasi
+              suhu &amp; kelembaban ruangan.
             </CardDescription>
           </div>
         </div>
@@ -142,35 +159,92 @@ export function RegisterNumberCard() {
 
         {mode === "register" ? (
           <form onSubmit={submit} className="grid gap-3">
+            <div className="grid grid-cols-2 gap-1 rounded-full bg-muted/60 p-1">
+              <button
+                type="button"
+                className={`flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+                  reqType === "number"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setReqType("number");
+                  setResult(null);
+                }}
+              >
+                <User className="size-3.5" />
+                Nomor
+              </button>
+              <button
+                type="button"
+                className={`flex h-8 cursor-pointer items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors ${
+                  reqType === "group"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+                onClick={() => {
+                  setReqType("group");
+                  setResult(null);
+                }}
+              >
+                <Users className="size-3.5" />
+                Group
+              </button>
+            </div>
+
             <div className="grid gap-2">
-              <Label htmlFor="req-name">Nama</Label>
+              <Label htmlFor="req-name">
+                {reqType === "group" ? "Nama Group" : "Nama"}
+              </Label>
               <div className="relative">
                 <User className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
                   id="req-name"
                   className="h-10 pl-9"
-                  placeholder="Nama Anda"
+                  placeholder={reqType === "group" ? "Nama group Anda" : "Nama Anda"}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
                 />
               </div>
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="req-number">Nomor WhatsApp</Label>
-              <Input
-                id="req-number"
-                className="h-10"
-                placeholder="6281234567890"
-                inputMode="numeric"
-                value={number}
-                onChange={(e) => setNumber(e.target.value)}
-                required
-              />
-              <p className="text-xs text-muted-foreground">
-                Format internasional tanpa tanda + dan tanpa awalan 0.
-              </p>
-            </div>
+
+            {reqType === "number" ? (
+              <div className="grid gap-2">
+                <Label htmlFor="req-number">Nomor WhatsApp</Label>
+                <Input
+                  id="req-number"
+                  className="h-10"
+                  placeholder="6281234567890"
+                  inputMode="numeric"
+                  value={number}
+                  onChange={(e) => setNumber(e.target.value)}
+                  required
+                />
+                <p className="text-xs text-muted-foreground">
+                  Format internasional tanpa tanda + dan tanpa awalan 0.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                <Label htmlFor="req-link">Link Undangan Group</Label>
+                <div className="relative">
+                  <Link2 className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="req-link"
+                    className="h-10 pl-9"
+                    placeholder="https://chat.whatsapp.com/xxxxxxxx"
+                    value={link}
+                    onChange={(e) => setLink(e.target.value)}
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Di WhatsApp: buka group → Info → Undang lewat link →
+                  Salin tautan.
+                </p>
+              </div>
+            )}
             <Button
               type="submit"
               className="h-10 w-full cursor-pointer"
@@ -192,18 +266,18 @@ export function RegisterNumberCard() {
         ) : (
           <form onSubmit={check} className="grid gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="check-number">Nomor WhatsApp</Label>
+              <Label htmlFor="check-number">Nomor / ID Group</Label>
               <Input
                 id="check-number"
                 className="h-10"
-                placeholder="6281234567890"
-                inputMode="numeric"
+                placeholder="6281234567890 atau 120363…@g.us"
                 value={checkNumber}
                 onChange={(e) => setCheckNumber(e.target.value)}
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Masukkan nomor yang pernah didaftarkan untuk melihat statusnya.
+                Masukkan nomor atau ID group yang pernah didaftarkan untuk
+                melihat statusnya.
               </p>
             </div>
             <Button
