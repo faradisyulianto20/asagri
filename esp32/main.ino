@@ -8,8 +8,8 @@
 // --- KONFIGURASI WIFI & SERVER ---
 const char* WIFI_SSID = "NAMA_WIFI_ANDA";
 const char* WIFI_PASS = "PASSWORD_WIFI";
-const char* API_URL = "https://nama-backend.up.railway.app/api/sensor";
-const char* API_TOKEN = "token-acak-sama-dengan-backend";
+const char* API_URL = "https://asagri-production.up.railway.app/api/sensor";
+const char* API_TOKEN = "t5843a85ce83ea39c6b7013157e135c8cb2508bc246c6111fd15e5ae13a6af6a7";
 
 // --- TIMER & INTERVAL ---
 unsigned long previousMillis = 0;
