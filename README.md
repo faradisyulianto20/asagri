@@ -5,7 +5,7 @@ Backend monitoring IoT ESP32 (SHT31-D) dengan dashboard React (responsif HP & de
 ```
 ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
                                |---> React dashboard (GET /dashboard)
-                               |---> wa-gateway (whatsapp-web.js) --> WhatsApp
+                               |---> wa-gateway (@whiskeysockets/baileys) --> WhatsApp
 ```
 
 ## Struktur
@@ -14,7 +14,7 @@ ESP32 (.ino) --HTTPS POST--> FastAPI (Railway) --> Supabase Postgres
 |---|---|
 | `backend/` | FastAPI: API sensor, dashboard, logika notifikasi |
 | `frontend/` | React (Vite + TypeScript + recharts): dashboard responsif |
-| `wa-gateway/` | Node.js whatsapp-web.js: kirim pesan WhatsApp, session + QR |
+| `wa-gateway/` | Node.js @whiskeysockets/baileys: kirim pesan WhatsApp, session + QR |
 | `esp32/main.ino` | Kode ESP32 (logika asli + WiFi & HTTP POST) |
 | `scripts/simulate_esp32.py` | Simulasi ESP32 tanpa hardware |
 
@@ -151,20 +151,20 @@ cd frontend && npm run build
 - Login admin (username + password) menghasilkan token sesi (di-hash di tabel `admin_sessions`); header `X-Admin-Token`
   dipakai untuk `/api/settings`, `/api/simulate`, `/api/wa/disconnect`, dan endpoint `auth`.
 - whatsapp-web.js **tidak resmi** — ada risiko nomor diblokir. Gunakan nomor cadangan jika memungkinkan.
+- @whiskeysockets/baileys mendukung passkey WhatsApp terbaru (Shortcake/CRSC) untuk linking device.
 
 ## Troubleshooting / Debug
 
-### Gateway WhatsApp tidak stabil (restart berulang, "detached Frame", crash)
+### Gateway WhatsApp tidak stabil (restart berulang, crash)
 
 - Cek log gateway di Railway, cari kata kunci: `RESTART karena`, `unhandledRejection`,
-  `uncaughtException`, `detached`, `terputus`, `LOGOUT`.
+  `uncaughtException`, `terputus`, `LOGOUT`.
 - Cek status langsung: `curl https://<gateway-url>/status` → lihat `connected`, `number`,
   `restartCount`, `lastRestartReason`. Endpoint `/env` menampilkan konfigurasi yang dibaca proses.
+- Gateway kini menggunakan **@whiskeysockets/baileys** (bukan whatsapp-web.js), yang mendukung
+  passkey WhatsApp terbaru (Shortcake/CRSC). Tidak perlu Chromium/Puppeteer.
 - Restart berulang dengan `LOGOUT` (beberapa kali beruntun) = sesi mati di sisi WhatsApp →
-  gateway otomatis menghapus sesi & menampilkan QR baru; **scan ulang** di dashboard
-  (nomor pengirim → Menu → Perangkat tertaut).
-- Jika `kirim pesan gagal: detached Frame` berulang: halaman WhatsApp Web me-reload;
-  gateway kini otomatis me-restart lebih cepat (jangan menunggu health-check).
+  gateway otomatis menghapus sesi & menampilkan QR baru; **scan ulang** di dashboard.
 - Pastikan `BACKEND_URL`/`BACKEND_TOKEN` gateway mengarah ke backend yang sama dengan
   `WA_AUTH_TOKEN`/`API_TOKEN`; kalau salah, session tidak tersimpan di database.
 
