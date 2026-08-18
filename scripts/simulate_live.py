@@ -58,7 +58,7 @@ HOLD_MINUTES = (2.0, 4.0)
 DECAY_MINUTES = (2.0, 4.0)
 
 SEND_ATTEMPTS = 3
-SEND_BACKOFF = (3, 8)
+SEND_BACKOFF = (5, 15, 30)
 
 
 def send(url: str, token: str, payload: dict) -> int:
@@ -72,7 +72,7 @@ def send(url: str, token: str, payload: dict) -> int:
         method="POST",
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.status
     except urllib.error.HTTPError as err:
         print("HTTP error:", err.code, err.read().decode())
@@ -229,7 +229,44 @@ class Simulator:
                 time.sleep(delay)
         return code
 
+    def _startup_check(self) -> None:
+        """Kirim request ringan untuk memastikan backend hidup sebelum loop utama."""
+        print("[simulator] mengecek koneksi ke backend...", flush=True)
+        for attempt in range(5):
+            try:
+                req = urllib.request.Request(
+                    self.url + "/api/sensor",
+                    data=json.dumps({
+                        "temperature": 25.0,
+                        "humidity": 60.0,
+                        "relay_fan": False,
+                        "relay_humidifier": False,
+                        "relay_3": False,
+                        "relay_4": False,
+                        "buzzer": False,
+                    }).encode(),
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Token": self.token,
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    if resp.status < 400:
+                        print("[simulator] backend OK", flush=True)
+                        return
+            except Exception as err:
+                delay = 10 * (attempt + 1)
+                print(
+                    f"[simulator] startup check gagal ({type(err).__name__}: {err}), "
+                    f"coba lagi dalam {delay}s...",
+                    flush=True,
+                )
+                time.sleep(delay)
+        print("[simulator] PERINGATAN: startup check gagal terus, lanjut anyway", flush=True)
+
     def run(self, steps: int | None) -> None:
+        self._startup_check()
         print(
             f"Simulasi live dimulai (interval {self.interval:.0f}s, "
             f"event tiap {self.event_min:.0f}-{self.event_max:.0f} mnt). "
