@@ -505,6 +505,7 @@ async function createSock() {
     if (connection === "close") {
       status.connected = false;
       status.registered = false;
+      status.starting = false;
 
       if (intentionalDisconnect) {
         intentionalDisconnect = false;

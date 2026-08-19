@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Leaf, FlaskConical, ShieldCheck } from "lucide-react";
+import { Leaf, FlaskConical } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { HumidityCard } from "../components/HumidityCard";
@@ -212,13 +212,6 @@ export default function AdminPage() {
               <FlaskConical />
               Simulasi
             </Button>
-            <Link
-              to="/"
-              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
-            >
-              <ShieldCheck />
-              Beranda
-            </Link>
           </div>
         </header>
 
