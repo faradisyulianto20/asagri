@@ -7,38 +7,38 @@
 
 :root {
   --radius: 1rem;
-  --background: #f0fdf4;
-  --foreground: #14532d;
+  --background: #feffed;
+  --foreground: #1a1a2e;
   --card: #ffffff;
-  --card-foreground: #14532d;
+  --card-foreground: #1a1a2e;
   --popover: #ffffff;
-  --popover-foreground: #14532d;
-  --primary: #15803d;
-  --primary-foreground: #ffffff;
-  --secondary: #22c55e;
-  --secondary-foreground: #0f172a;
-  --muted: #e8f0f1;
-  --muted-foreground: #64748b;
-  --accent: #a16207;
+  --popover-foreground: #1a1a2e;
+  --primary: #cadb3c;
+  --primary-foreground: #1a1a2e;
+  --secondary: #a88aec;
+  --secondary-foreground: #ffffff;
+  --muted: #f4f5dc;
+  --muted-foreground: #6b7280;
+  --accent: #a88aec;
   --accent-foreground: #ffffff;
   --destructive: #dc2626;
   --destructive-foreground: #ffffff;
-  --border: #bbf7d0;
-  --input: #bbf7d0;
-  --ring: #15803d;
-  --chart-1: #15803d;
-  --chart-2: #0369a1;
-  --chart-3: #a16207;
-  --chart-4: #22c55e;
-  --chart-5: #d97706;
+  --border: #dfe6a8;
+  --input: #dfe6a8;
+  --ring: #cadb3c;
+  --chart-1: #cadb3c;
+  --chart-2: #a88aec;
+  --chart-3: #8b6fd4;
+  --chart-4: #b8ca4e;
+  --chart-5: #c09ee0;
   --sidebar: #ffffff;
-  --sidebar-foreground: #14532d;
-  --sidebar-primary: #15803d;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #dcfce7;
-  --sidebar-accent-foreground: #14532d;
-  --sidebar-border: #bbf7d0;
-  --sidebar-ring: #15803d;
+  --sidebar-foreground: #1a1a2e;
+  --sidebar-primary: #cadb3c;
+  --sidebar-primary-foreground: #1a1a2e;
+  --sidebar-accent: #f4f5dc;
+  --sidebar-accent-foreground: #1a1a2e;
+  --sidebar-border: #dfe6a8;
+  --sidebar-ring: #cadb3c;
 }
 
 @theme inline {
@@ -94,8 +94,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     background-image:
-      radial-gradient(1100px 520px at 100% -10%, #bbf7d0 0%, transparent 55%),
-      radial-gradient(900px 480px at -10% 110%, #dcfce7 0%, transparent 50%);
+      radial-gradient(1100px 520px at 100% -10%, #dfe6a8 0%, transparent 55%),
+      radial-gradient(900px 480px at -10% 110%, #e8ddf5 0%, transparent 50%);
     font-family: var(--font-sans);
   }
   @media (prefers-reduced-motion: reduce) {

@@ -176,8 +176,8 @@ export default function AdminPage() {
             <span
               className={`size-2 rounded-full ${
                 wa?.connected
-                  ? "bg-primary shadow-[0_0_0_4px_rgba(21,128,61,0.15)]"
-                  : "bg-accent shadow-[0_0_0_4px_rgba(161,98,7,0.15)]"
+                  ? "bg-primary shadow-[0_0_0_4px_rgba(202,219,60,0.15)]"
+                  : "bg-accent shadow-[0_0_0_4px_rgba(168,138,236,0.15)]"
               }`}
             />
             {wa?.connected

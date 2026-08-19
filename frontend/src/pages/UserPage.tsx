@@ -5,16 +5,14 @@ import { useDashboardData } from "../hooks/useDashboardData";
 import { HumidityCard } from "../components/HumidityCard";
 import { TempCard } from "../components/TempCard";
 import { StatusChips } from "../components/StatusChips";
-import { WaCard } from "../components/WaCard";
 import { HistoryChart } from "../components/HistoryChart";
 import { InfoModal } from "../components/InfoModal";
 import { RegisterNumberCard } from "../components/RegisterNumberCard";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function UserPage() {
-  const { latest, history, wa, notify, error } = useDashboardData();
+  const { latest, history, error } = useDashboardData();
   const [infoOpen, setInfoOpen] = useState(false);
 
   useEffect(() => {
@@ -45,24 +43,6 @@ export default function UserPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            className={`h-8 gap-1.5 rounded-full px-3 ${
-              wa?.connected
-                ? "bg-primary/10 text-primary"
-                : "bg-accent/10 text-accent"
-            }`}
-          >
-            <span
-              className={`size-2 rounded-full ${
-                wa?.connected
-                  ? "bg-primary shadow-[0_0_0_4px_rgba(21,128,61,0.15)]"
-                  : "bg-accent shadow-[0_0_0_4px_rgba(161,98,7,0.15)]"
-              }`}
-            />
-            {wa?.connected
-              ? "WhatsApp terhubung"
-              : "WhatsApp belum terhubung"}
-          </Badge>
           <Button
             variant="outline"
             className="h-8 cursor-pointer rounded-full"
@@ -100,15 +80,6 @@ export default function UserPage() {
         <aside className="grid gap-4">
           <StatusChips latest={latest} />
           <RegisterNumberCard />
-          <WaCard
-            wa={wa}
-            notify={notify}
-            admin={false}
-            actions={false}
-            onScan={() => {}}
-            onDisconnect={() => Promise.resolve()}
-            onTest={() => Promise.resolve()}
-          />
         </aside>
       </main>
 

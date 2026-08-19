@@ -91,7 +91,7 @@ export function SimulatePage({
       }
     >
       <span
-        className={`size-2 rounded-full ${danger ? "bg-destructive" : on ? "bg-primary shadow-[0_0_0_4px_rgba(21,128,61,0.15)]" : "bg-muted-foreground/50"}`}
+        className={`size-2 rounded-full ${danger ? "bg-destructive" : on ? "bg-primary shadow-[0_0_0_4px_rgba(202,219,60,0.15)]" : "bg-muted-foreground/50"}`}
       />
       {label}
     </Badge>

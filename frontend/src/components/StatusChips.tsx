@@ -36,7 +36,7 @@ export function StatusChips({ latest }: { latest: LatestData | null }) {
   const dotClass = (c: ChipDef) => {
     if (c.danger) return "bg-destructive";
     if (c.warn) return "bg-accent";
-    if (c.on) return "bg-primary shadow-[0_0_0_4px_rgba(21,128,61,0.15)]";
+    if (c.on) return "bg-primary shadow-[0_0_0_4px_rgba(202,219,60,0.15)]";
     return "bg-muted-foreground/50";
   };
 
