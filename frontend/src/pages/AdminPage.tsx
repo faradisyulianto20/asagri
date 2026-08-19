@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  Leaf,
-  LogOut,
-  Settings,
-  FlaskConical,
-  HelpCircle,
-  ListChecks,
-  LayoutDashboard,
-  Sprout,
-  ShieldCheck,
-} from "lucide-react";
+import { Leaf, FlaskConical, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { HumidityCard } from "../components/HumidityCard";
@@ -24,12 +14,12 @@ import { AdminLogin } from "../components/AdminLogin";
 import { AdminSettings } from "../components/AdminSettings";
 import { SimulatePage } from "../components/SimulatePage";
 import { RequestList } from "../components/RequestList";
+import { AdminSidebar, type SidebarTab } from "../components/AdminSidebar";
+import { AnalyticsPanel } from "../components/AnalyticsPanel";
 import { disconnectWa, fetchMe, logoutAdmin, testWa, TOKEN_KEY, USERNAME_KEY } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
-
-type Tab = "dashboard" | "requests";
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -40,7 +30,7 @@ export default function AdminPage() {
   const [username, setUsername] = useState<string | null>(() =>
     localStorage.getItem(USERNAME_KEY),
   );
-  const [tab, setTab] = useState<Tab>("dashboard");
+  const [tab, setTab] = useState<SidebarTab>("dashboard");
   const [qrOpen, setQrOpen] = useState(false);
   const [qrAutoOpened, setQrAutoOpened] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -105,12 +95,13 @@ export default function AdminPage() {
     toast.success("Berhasil keluar");
   };
 
+  /* ── Login screen ── */
   if (!token) {
     return (
       <div className="mx-auto max-w-md px-4 py-12">
         <header className="mb-6 flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-secondary text-white shadow-md shadow-primary/20">
-            <Leaf className="size-6" />
+          <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-secondary shadow-md shadow-primary/20">
+            <Leaf className="size-6 text-primary-foreground" />
           </div>
           <div>
             <h1 className="font-heading text-xl font-extrabold tracking-tight">
@@ -141,140 +132,135 @@ export default function AdminPage() {
     ? `Update: ${new Date(latest.created_at as string).toLocaleString("id-ID")}`
     : "Menunggu data…";
 
-  const tabClass = (active: boolean) =>
-    `h-8 cursor-pointer rounded-full px-3 text-[13px] font-semibold transition-colors ${
-      active
-        ? "bg-primary text-primary-foreground shadow-sm"
-        : "text-muted-foreground hover:bg-muted hover:text-foreground"
-    }`;
+  const handleNavigate = (t: SidebarTab) => {
+    if (t === "settings") {
+      setSettingsOpen(true);
+    } else if (t === "help") {
+      setInfoOpen(true);
+    } else {
+      setTab(t);
+    }
+  };
+
+  /* ── Tab title for header ── */
+  const tabTitles: Record<SidebarTab, string> = {
+    dashboard: "Dashboard",
+    analytics: "Analytics",
+    devices: "Devices",
+    notifications: "Notifications",
+    settings: "Settings",
+    help: "Help Center",
+  };
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-secondary text-white shadow-md shadow-primary/20">
-            <Leaf className="size-6" />
-          </div>
+    <div className="min-h-screen bg-background">
+      <AdminSidebar
+        active={tab}
+        onNavigate={handleNavigate}
+        username={username ?? "admin"}
+        onLogout={onLogout}
+      />
+
+      {/* Main Content */}
+      <div className="ml-64">
+        {/* Top Header Bar */}
+        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border bg-background/80 px-6 py-4 backdrop-blur-md">
           <div>
-            <h1 className="font-heading text-2xl font-extrabold tracking-tight sm:text-3xl">
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Asagri Monitor
-              </span>
-            </h1>
-            <p className="text-[13px] text-muted-foreground">{lastUpdate}</p>
+            <h2 className="font-heading text-lg font-bold text-foreground">
+              {tabTitles[tab]}
+            </h2>
+            <p className="text-[12px] text-muted-foreground">{lastUpdate}</p>
           </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge
-            className={`h-8 gap-1.5 rounded-full px-3 ${
-              wa?.connected
-                ? "bg-primary/10 text-primary"
-                : "bg-accent/10 text-accent"
-            }`}
-          >
-            <span
-              className={`size-2 rounded-full ${
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              className={`h-8 gap-1.5 rounded-full px-3 ${
                 wa?.connected
-                  ? "bg-primary shadow-[0_0_0_4px_rgba(202,219,60,0.15)]"
-                  : "bg-accent shadow-[0_0_0_4px_rgba(168,138,236,0.15)]"
+                  ? "bg-green-500/10 text-green-600"
+                  : wa?.starting
+                    ? "bg-yellow-500/10 text-yellow-600"
+                    : wa?.error
+                      ? "bg-red-500/10 text-red-600"
+                      : "bg-orange-500/10 text-orange-600"
               }`}
-            />
-            {wa?.connected
-              ? "WhatsApp terhubung"
-              : "WhatsApp belum terhubung"}
-          </Badge>
-          <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full"
-            type="button"
-            onClick={() => setInfoOpen(true)}
-          >
-            <HelpCircle />
-            Bantuan
-          </Button>
-          <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full"
-            type="button"
-            onClick={() => setSimulateOpen(true)}
-          >
-            <FlaskConical />
-            Simulasi
-          </Button>
-          <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full"
-            type="button"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings />
-            Pengaturan
-          </Button>
-          <Link
-            to="/"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            <ShieldCheck />
-            Beranda
-          </Link>
-          <Badge className="h-8 gap-1.5 rounded-full bg-muted px-3 text-foreground">
-            <Sprout className="size-3.5 text-primary" />
-            Admin: {username}
-            <button
-              className="flex cursor-pointer items-center gap-1 text-destructive hover:underline"
-              type="button"
-              onClick={onLogout}
             >
-              <LogOut className="size-3.5" />
-              Keluar
-            </button>
-          </Badge>
-        </div>
-      </header>
+              <span
+                className={`size-2 rounded-full ${
+                  wa?.connected
+                    ? "bg-green-500 shadow-[0_0_0_4px_rgba(22,163,74,0.15)]"
+                    : wa?.starting
+                      ? "bg-yellow-500 shadow-[0_0_0_4px_rgba(234,179,8,0.15)]"
+                      : wa?.error
+                        ? "bg-red-500 shadow-[0_0_0_4px_rgba(220,38,38,0.15)]"
+                        : "bg-orange-500 shadow-[0_0_0_4px_rgba(249,115,22,0.15)]"
+                }`}
+              />
+              {wa?.connected
+                ? "WhatsApp terhubung"
+                : wa?.starting
+                  ? "Menghubungi…"
+                  : wa?.error
+                    ? "WhatsApp error"
+                    : "WhatsApp terputus"}
+            </Badge>
+            <Button
+              variant="outline"
+              className="h-8 cursor-pointer rounded-full"
+              type="button"
+              onClick={() => setSimulateOpen(true)}
+            >
+              <FlaskConical />
+              Simulasi
+            </Button>
+            <Link
+              to="/"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
+            >
+              <ShieldCheck />
+              Beranda
+            </Link>
+          </div>
+        </header>
 
-      <nav className="mb-4 flex gap-1 rounded-full bg-muted/60 p-1 sm:w-fit">
-        <button
-          type="button"
-          className={tabClass(tab === "dashboard")}
-          onClick={() => setTab("dashboard")}
-        >
-          <span className="flex items-center gap-1.5">
-            <LayoutDashboard className="size-3.5" />
-            Dashboard
-          </span>
-        </button>
-        <button
-          type="button"
-          className={tabClass(tab === "requests")}
-          onClick={() => setTab("requests")}
-        >
-          <span className="flex items-center gap-1.5">
-            <ListChecks className="size-3.5" />
-            Permintaan Nomor
-          </span>
-        </button>
-      </nav>
-
-      {tab === "requests" ? (
-        <RequestList token={token} />
-      ) : (
-        <>
+        {/* Page Content */}
+        <div className="p-6">
           {error && (
             <div className="mb-4 rounded-xl bg-destructive px-4 py-3 text-sm font-medium text-destructive-foreground">
               Gagal memuat: {error}
             </div>
           )}
-          <main className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] lg:items-start">
-            <section className="grid gap-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <TempCard latest={latest} />
-                <HumidityCard latest={latest} />
-              </div>
-              <HistoryChart history={history} />
-            </section>
 
-            <aside className="grid gap-4">
+          {/* Dashboard Tab */}
+          {tab === "dashboard" && (
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] lg:items-start">
+              <section className="grid gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <TempCard latest={latest} />
+                  <HumidityCard latest={latest} />
+                </div>
+                <HistoryChart history={history} />
+              </section>
+
+              <aside className="grid gap-4">
+                <StatusChips latest={latest} />
+                <WaCard
+                  wa={wa}
+                  notify={notify}
+                  admin
+                  onScan={() => setQrOpen(true)}
+                  onDisconnect={() => disconnectWa(token).then(() => undefined)}
+                  onTest={() => testWa(token).then(() => undefined)}
+                />
+              </aside>
+            </div>
+          )}
+
+          {/* Analytics Tab */}
+          {tab === "analytics" && <AnalyticsPanel history={history} />}
+
+          {/* Devices Tab */}
+          {tab === "devices" && (
+            <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
               <StatusChips latest={latest} />
               <WaCard
                 wa={wa}
@@ -284,11 +270,19 @@ export default function AdminPage() {
                 onDisconnect={() => disconnectWa(token).then(() => undefined)}
                 onTest={() => testWa(token).then(() => undefined)}
               />
-            </aside>
-          </main>
-        </>
-      )}
+            </div>
+          )}
 
+          {/* Notifications Tab */}
+          {tab === "notifications" && (
+            <div className="grid gap-4">
+              <RequestList token={token} />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
       {qrOpen && showQr && wa?.qr && (
         <QrModal qr={wa.qr} onClose={() => setQrOpen(false)} />
       )}

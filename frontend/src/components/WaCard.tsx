@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { MessageSquareText, QrCode, Unplug, CheckCircle2, XCircle } from "lucide-react";
+import {
+  MessageSquareText,
+  QrCode,
+  Unplug,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  WifiOff,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { NotifyStatus, WaStatus } from "../api";
 import { formatNumber } from "@/lib/format";
@@ -31,19 +39,35 @@ export function WaCard({
   actions?: boolean;
 }) {
   const connected = Boolean(wa?.connected);
+  const starting = Boolean(wa?.starting);
+  const hasError = Boolean(wa?.error);
   const [busy, setBusy] = useState<"test" | "disconnect" | null>(null);
 
   const detail = connected
     ? wa?.number
       ? `Nomor: ${formatNumber(wa.number)}`
       : "Gateway terhubung"
-    : wa?.error || "Scan QR untuk menghubungkan";
+    : hasError
+      ? wa?.error
+      : starting
+        ? "Menghubungkan…"
+        : "Scan QR untuk menghubungkan";
 
   const badge = connected
     ? "Terhubung"
-    : wa?.starting
+    : starting
       ? "Menghubungi…"
-      : "Belum terhubung";
+      : hasError
+        ? "Error"
+        : "Terputus";
+
+  const badgeClass = connected
+    ? "shrink-0 bg-green-500/10 text-green-600"
+    : starting
+      ? "shrink-0 bg-yellow-500/10 text-yellow-600"
+      : hasError
+        ? "shrink-0 bg-red-500/10 text-red-600"
+        : "shrink-0 bg-orange-500/10 text-orange-600";
 
   const last = notify?.last;
   const lastText = last
@@ -91,17 +115,15 @@ export function WaCard({
               Notifikasi terakhir: {lastText}
             </CardDescription>
           </div>
-          <Badge
-            className={
-              connected
-                ? "shrink-0 bg-primary/10 text-primary"
-                : "shrink-0 bg-accent/10 text-accent"
-            }
-          >
+          <Badge className={badgeClass}>
             {connected ? (
               <CheckCircle2 className="size-3" />
-            ) : (
+            ) : starting ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : hasError ? (
               <XCircle className="size-3" />
+            ) : (
+              <WifiOff className="size-3" />
             )}
             {badge}
           </Badge>
