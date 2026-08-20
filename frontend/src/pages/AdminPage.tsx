@@ -33,7 +33,7 @@ export default function AdminPage() {
   const [tab, setTab] = useState<SidebarTab>("dashboard");
   const [qrOpen, setQrOpen] = useState(false);
   const [qrAutoOpened, setQrAutoOpened] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
 
@@ -133,9 +133,7 @@ export default function AdminPage() {
     : "Menunggu data…";
 
   const handleNavigate = (t: SidebarTab) => {
-    if (t === "settings") {
-      setSettingsOpen(true);
-    } else if (t === "help") {
+    if (t === "help") {
       setInfoOpen(true);
     } else {
       setTab(t);
@@ -272,6 +270,9 @@ export default function AdminPage() {
               <RequestList token={token} />
             </div>
           )}
+
+          {/* Settings Tab */}
+          {tab === "settings" && <AdminSettings token={token} />}
         </div>
       </div>
 
@@ -280,9 +281,6 @@ export default function AdminPage() {
         <QrModal qr={wa.qr} onClose={() => setQrOpen(false)} />
       )}
       {infoOpen && <InfoModal onClose={() => setInfoOpen(false)} />}
-      {settingsOpen && (
-        <AdminSettings token={token} onClose={() => setSettingsOpen(false)} />
-      )}
       {simulateOpen && (
         <SimulatePage
           token={token}

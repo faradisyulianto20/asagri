@@ -1,25 +1,16 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Leaf, HelpCircle, ShieldCheck } from "lucide-react";
+import { Leaf, ShieldCheck } from "lucide-react";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { HumidityCard } from "../components/HumidityCard";
 import { TempCard } from "../components/TempCard";
 import { StatusChips } from "../components/StatusChips";
 import { HistoryChart } from "../components/HistoryChart";
-import { InfoModal } from "../components/InfoModal";
 import { RegisterNumberCard } from "../components/RegisterNumberCard";
-import { Button } from "@/components/ui/button";
+import { InlineHelp } from "../components/InlineHelp";
 import { Toaster } from "@/components/ui/sonner";
 
 export default function UserPage() {
   const { latest, history, error } = useDashboardData();
-  const [infoOpen, setInfoOpen] = useState(false);
-
-  useEffect(() => {
-    if (!localStorage.getItem("asagri_info_seen")) {
-      setInfoOpen(true);
-    }
-  }, []);
 
   const lastUpdate = latest?.available
     ? `Update: ${new Date(latest.created_at as string).toLocaleString("id-ID")}`
@@ -42,24 +33,13 @@ export default function UserPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant="outline"
-            className="h-8 cursor-pointer rounded-full"
-            type="button"
-            onClick={() => setInfoOpen(true)}
-          >
-            <HelpCircle />
-            Bantuan
-          </Button>
-          <Link
-            to="/admin"
-            className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
-          >
-            <ShieldCheck />
-            Masuk Admin
-          </Link>
-        </div>
+        <Link
+          to="/admin"
+          className="inline-flex h-8 items-center gap-1.5 rounded-full border border-border bg-background px-3 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
+        >
+          <ShieldCheck />
+          Masuk Admin
+        </Link>
       </header>
 
       {error && (
@@ -74,16 +54,103 @@ export default function UserPage() {
             <TempCard latest={latest} />
             <HumidityCard latest={latest} />
           </div>
+          <InlineHelp title="Cara kerja sensor &amp; perangkat">
+            <p>
+              ESP32 membaca sensor SHT31 tiap 2 detik, lalu{" "}
+              <strong>mengirim data setiap 10 detik</strong> ke server.
+              Dashboard ini memperbarui tampilannya{" "}
+              <strong>setiap 5 detik</strong>.
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>Kipas nyala saat suhu ≥ 32°C, mati saat ≤ 25°C</li>
+              <li>
+                Humidifier nyala saat kelembaban ≤ 61%, mati saat ≥ 83%
+              </li>
+              <li>
+                Buzzer berbunyi saat suhu &gt; 40°C atau kelembaban &lt; 50%
+              </li>
+            </ul>
+          </InlineHelp>
+
           <HistoryChart history={history} />
+          <InlineHelp title="Tentang grafik riwayat 24 jam">
+            <p>
+              Grafik menampilkan riwayat suhu &amp; kelembaban selama 24 jam
+              terakhir. Garis{" "}
+              <span className="font-semibold text-foreground">kiri (suhu)</span>{" "}
+              dan{" "}
+              <span className="font-semibold text-foreground">
+                kanan (kelembaban)
+              </span>{" "}
+              diperbarui otomatis saat data baru masuk dari ESP32.
+            </p>
+          </InlineHelp>
         </section>
 
         <aside className="grid gap-4">
           <StatusChips latest={latest} />
+          <InlineHelp title="Tentang status alat">
+            <p>
+              Setiap badge menunjukkan kondisi terkini relay, buzzer, dan sensor
+              dari ESP32:
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Hijau</strong> — aktif (kipas/humidifier menyala)
+              </li>
+              <li>
+                <strong>Kuning</strong> — peringatan (sensor error / data
+                simulasi)
+              </li>
+              <li>
+                <strong>Merah</strong> — danger (buzzer berbunyi)
+              </li>
+              <li>
+                <strong>Abu-abu</strong> — tidak aktif
+              </li>
+            </ul>
+          </InlineHelp>
+
           <RegisterNumberCard />
+          <InlineHelp title="Cara mendaftarkan WhatsApp">
+            <p>
+              <strong>1. Hubungkan WhatsApp pengirim</strong> — Buka WhatsApp →{" "}
+              <em>Menu → Perangkat tertaut → Tautkan perangkat</em>, lalu scan
+              QR yang muncul di dashboard. Hanya{" "}
+              <strong>satu nomor</strong> yang dapat tertaut sebagai pengirim.
+            </p>
+            <p className="mt-2">
+              <strong>2. Daftarkan nomor / group penerima</strong> — Isi formulir
+              di atas dengan nama dan nomor WhatsApp (format internasional tanpa
+              +) atau link undangan group. Permintaan akan diverifikasi admin
+              sebelum aktif.
+            </p>
+            <p className="mt-2">
+              <strong>3. Cek status pendaftaran</strong> — Tab "Cek Status"
+              untuk melihat apakah nomor/group sudah disetujui, masih menunggu,
+              atau ditolak.
+            </p>
+            <p className="mt-2">
+              <strong>Jenis notifikasi</strong> yang dikirim:
+            </p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              <li>
+                <strong>Kipas nyala</strong> — suhu melebihi ambang, kipas
+                dinyalakan otomatis.
+              </li>
+              <li>
+                <strong>Humidifier nyala</strong> — kelembaban di bawah ambang,
+                humidifier dinyalakan otomatis.
+              </li>
+              <li>
+                <strong>Peringatan ekstrem</strong> — suhu/kelembaban di luar
+                batas aman, segera periksa ruangan.
+              </li>
+            </ul>
+          </InlineHelp>
         </aside>
       </main>
 
-      {infoOpen && <InfoModal onClose={() => setInfoOpen(false)} />}
       <Toaster position="top-right" richColors closeButton />
     </div>
   );
