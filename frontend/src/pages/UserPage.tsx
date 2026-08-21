@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { HelpCircle } from "lucide-react";
 import { useDashboardData } from "../hooks/useDashboardData";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { HumidityCard } from "../components/HumidityCard";
 import { TempCard } from "../components/TempCard";
 import { StatusChips } from "../components/StatusChips";
@@ -88,6 +89,7 @@ const TOUR_STEPS: TourStep[] = [
 ];
 
 export default function UserPage() {
+  useDocumentTitle();
   const { latest, error, loading } = useDashboardData();
   const [tourActive, setTourActive] = useState(false);
 

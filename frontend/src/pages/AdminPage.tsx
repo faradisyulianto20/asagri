@@ -4,6 +4,7 @@ import { FlaskConical, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { useWaRequests } from "../hooks/useWaRequests";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { HumidityCard } from "../components/HumidityCard";
 import { TempCard } from "../components/TempCard";
 import { StatusChips } from "../components/StatusChips";
@@ -21,6 +22,16 @@ import { disconnectWa, fetchMe, logoutAdmin, testWa, TOKEN_KEY, USERNAME_KEY } f
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
+
+/* ── Tab title for header & document title ── */
+const tabTitles: Record<SidebarTab, string> = {
+  dashboard: "Dashboard",
+  analytics: "Analytics",
+  devices: "Devices",
+  notifications: "Notifications",
+  settings: "Settings",
+  help: "Help Center",
+};
 
 export default function AdminPage() {
   const navigate = useNavigate();
@@ -42,6 +53,8 @@ export default function AdminPage() {
   const waRequests = useWaRequests(token);
   const pendingRequestCount =
     waRequests.requests?.filter((r) => r.status === "pending").length ?? 0;
+
+  useDocumentTitle(!token ? "Masuk Admin" : tabTitles[tab]);
 
   const showQr = Boolean(wa && !wa.connected && wa.qr);
 
@@ -164,16 +177,6 @@ export default function AdminPage() {
     } else {
       setTab(t);
     }
-  };
-
-  /* ── Tab title for header ── */
-  const tabTitles: Record<SidebarTab, string> = {
-    dashboard: "Dashboard",
-    analytics: "Analytics",
-    devices: "Devices",
-    notifications: "Notifications",
-    settings: "Settings",
-    help: "Help Center",
   };
 
   return (
