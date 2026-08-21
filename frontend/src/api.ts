@@ -266,6 +266,26 @@ export async function fetchRequestStatus(
   }>(`/api/wa/request/status?number=${encodeURIComponent(number)}`);
 }
 
+export async function unregisterRequest(
+  number: string,
+): Promise<{ status: string; message?: string }> {
+  const res = await fetch("/api/wa/request/unregister", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ number }),
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      detail = (await res.json()).detail || "";
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<{ status: string; message?: string }>;
+}
+
 export function fetchWaRequests(token: string): Promise<WaRequest[]> {
   return adminFetch<WaRequest[]>("/api/wa/requests", token);
 }

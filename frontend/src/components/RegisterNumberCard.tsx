@@ -9,6 +9,7 @@ import {
   Search,
   Send,
   User,
+  UserMinus,
   Users,
   XCircle,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import {
   fetchRequestStatus,
   submitGroupRequest,
   submitNumberRequest,
+  unregisterRequest,
 } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,14 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const STATUS_META = {
   none: { label: "Belum terdaftar", className: "bg-muted text-muted-foreground" },
@@ -60,6 +70,25 @@ export function RegisterNumberCard() {
   const [link, setLink] = useState("");
   const [checkNumber, setCheckNumber] = useState("");
   const [status, setStatus] = useState<keyof typeof STATUS_META | null>(null);
+  const [confirmUnregister, setConfirmUnregister] = useState(false);
+  const [unregisterBusy, setUnregisterBusy] = useState(false);
+
+  const copot = async () => {
+    if (unregisterBusy || !checkNumber.trim()) return;
+    setUnregisterBusy(true);
+    try {
+      const res = await unregisterRequest(checkNumber.trim());
+      toast.success(res.message || "Pendaftaran berhasil dicopot");
+      setStatus("none");
+      setConfirmUnregister(false);
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Gagal mencopot pendaftaran",
+      );
+    } finally {
+      setUnregisterBusy(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -312,7 +341,7 @@ export function RegisterNumberCard() {
         )}
 
         {status && (
-          <div className="flex items-center gap-2 rounded-xl bg-muted/40 p-3 text-[13px]">
+          <div className="flex flex-wrap items-center gap-2 rounded-xl bg-muted/40 p-3 text-[13px]">
             <span className="text-muted-foreground">Status:</span>
             <Badge className={`h-6 rounded-full px-2.5 ${STATUS_META[status].className}`}>
               {status === "approved" && <CheckCircle2 className="size-3" />}
@@ -325,8 +354,67 @@ export function RegisterNumberCard() {
                 — silakan hubungi admin, atau daftarkan ulang.
               </span>
             )}
+            {(status === "approved" || status === "pending") && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="ml-auto h-7 cursor-pointer rounded-full border-destructive/40 px-3 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                disabled={unregisterBusy}
+                onClick={() => setConfirmUnregister(true)}
+              >
+                <UserMinus />
+                {status === "approved" ? "Copot Pendaftaran" : "Batalkan Permintaan"}
+              </Button>
+            )}
           </div>
         )}
+
+        <Dialog open={confirmUnregister} onOpenChange={setConfirmUnregister}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>
+                {status === "approved"
+                  ? "Copot pendaftaran nomor ini?"
+                  : "Batalkan permintaan pendaftaran?"}
+              </DialogTitle>
+              <DialogDescription>
+                {status === "approved"
+                  ? `${checkNumber.trim()} tidak akan lagi menerima notifikasi suhu & kelembaban ruangan.`
+                  : `${checkNumber.trim()} tidak akan diproses oleh admin.`}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="cursor-pointer"
+                onClick={() => setConfirmUnregister(false)}
+                disabled={unregisterBusy}
+              >
+                Batal
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                className="cursor-pointer"
+                onClick={copot}
+                disabled={unregisterBusy}
+              >
+                {unregisterBusy ? (
+                  <>
+                    <Loader2 className="animate-spin" />
+                    Memproses…
+                  </>
+                ) : status === "approved" ? (
+                  "Ya, Copot"
+                ) : (
+                  "Ya, Batalkan"
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

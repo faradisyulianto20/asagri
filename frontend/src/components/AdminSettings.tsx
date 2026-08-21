@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Loader2, Plus, Save, Settings, X } from "lucide-react";
+import { Check, Loader2, Plus, Save, Settings, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAdminSettings,
@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 const PLACEHOLDER_NUMBERS = ["6281234567890"];
 
@@ -20,6 +21,7 @@ export function AdminSettings({ token }: { token: string }) {
   const [numbers, setNumbers] = useState<string[]>([]);
   const [numberInput, setNumberInput] = useState("");
   const [numberError, setNumberError] = useState<string | null>(null);
+  const [editingValue, setEditingValue] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -107,16 +109,21 @@ export function AdminSettings({ token }: { token: string }) {
     set("whatsapp_to", next.join(", "));
   };
 
+  const validateEntry = (p: string): string | null => {
+    if (!/^\d+$/.test(p) && !p.endsWith("@g.us")) {
+      return "Format tidak valid: gunakan angka internasional tanpa tanda +, atau ID group berakhiran @g.us";
+    }
+    return null;
+  };
+
   const pushNumbers = (raw: string): boolean => {
     const parts = raw.split(",").map((x) => x.trim()).filter(Boolean);
     if (parts.length === 0) return true;
     const next = [...numbers];
     let err: string | null = null;
     for (const p of parts) {
-      if (!/^\d+$/.test(p) && !p.endsWith("@g.us")) {
-        err = "Format tidak valid: gunakan angka internasional tanpa tanda +, atau ID group berakhiran @g.us";
-        continue;
-      }
+      err = validateEntry(p);
+      if (err) continue;
       if (next.includes(p)) {
         err = `${p} sudah terdaftar`;
         continue;
@@ -129,6 +136,11 @@ export function AdminSettings({ token }: { token: string }) {
   };
 
   const handleNumberInput = (value: string) => {
+    if (editingValue !== null) {
+      setNumberInput(value);
+      if (numberError) setNumberError(null);
+      return;
+    }
     const commaIdx = value.lastIndexOf(",");
     if (commaIdx === -1) {
       setNumberInput(value);
@@ -140,11 +152,42 @@ export function AdminSettings({ token }: { token: string }) {
   };
 
   const commitNumberInput = () => {
-    if (!numberInput.trim()) return;
+    const raw = numberInput.trim();
+    if (!raw) return;
+    if (editingValue !== null) {
+      const v = raw.split(",")[0].trim();
+      const err = validateEntry(v);
+      if (err) {
+        setNumberError(err);
+        return;
+      }
+      if (numbers.includes(v) && v !== editingValue) {
+        setNumberError(`${v} sudah terdaftar`);
+        return;
+      }
+      syncNumbers(numbers.map((x) => (x === editingValue ? v : x)));
+      setEditingValue(null);
+      setNumberInput("");
+      setNumberError(null);
+      return;
+    }
     if (pushNumbers(numberInput)) setNumberInput("");
   };
 
+  const cancelEdit = () => {
+    setEditingValue(null);
+    setNumberInput("");
+    setNumberError(null);
+  };
+
+  const startEdit = (n: string) => {
+    setEditingValue(n);
+    setNumberInput(n);
+    setNumberError(null);
+  };
+
   const removeNumber = (n: string) => {
+    if (editingValue === n) cancelEdit();
     syncNumbers(numbers.filter((x) => x !== n));
     if (numberError) setNumberError(null);
   };
@@ -171,14 +214,22 @@ export function AdminSettings({ token }: { token: string }) {
                     {phoneNumbers.map((n) => (
                       <span
                         key={n}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground"
+                        title="Klik untuk mengedit"
+                        onClick={() => startEdit(n)}
+                        className={cn(
+                          "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground transition-shadow",
+                          editingValue === n && "ring-2 ring-primary",
+                        )}
                       >
                         {n}
                         <button
                           type="button"
                           aria-label={`Hapus ${n}`}
                           className="grid size-5 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => removeNumber(n)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeNumber(n);
+                          }}
                         >
                           <X className="size-3" />
                         </button>
@@ -196,14 +247,22 @@ export function AdminSettings({ token }: { token: string }) {
                     {groupIds.map((n) => (
                       <span
                         key={n}
-                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground"
+                        title="Klik untuk mengedit"
+                        onClick={() => startEdit(n)}
+                        className={cn(
+                          "inline-flex h-7 cursor-pointer items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground transition-shadow",
+                          editingValue === n && "ring-2 ring-primary",
+                        )}
                       >
                         {n}
                         <button
                           type="button"
                           aria-label={`Hapus ${n}`}
                           className="grid size-5 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => removeNumber(n)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeNumber(n);
+                          }}
                         >
                           <X className="size-3" />
                         </button>
@@ -218,25 +277,38 @@ export function AdminSettings({ token }: { token: string }) {
                   className="h-10 flex-1"
                   value={numberInput}
                   aria-invalid={numberError !== null}
-                  placeholder="6281111111111 atau 12036301234567890@g.us"
+                  placeholder={
+                    editingValue !== null
+                      ? `Mengedit ${editingValue}`
+                      : "6281111111111 atau 12036301234567890@g.us"
+                  }
                   onChange={(e) => handleNumberInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
                       e.preventDefault();
                       commitNumberInput();
                     }
+                    if (e.key === "Escape" && editingValue !== null) {
+                      cancelEdit();
+                    }
                   }}
                 />
                 <Button
                   type="button"
-                  variant="outline"
-                  aria-label="Tambah nomor"
+                  variant={editingValue !== null ? "default" : "outline"}
+                  aria-label={editingValue !== null ? "Simpan perubahan" : "Tambah nomor"}
                   className="h-10 w-10 shrink-0 cursor-pointer p-0"
                   onClick={commitNumberInput}
                 >
-                  <Plus />
+                  {editingValue !== null ? <Check /> : <Plus />}
                 </Button>
               </div>
+              {editingValue !== null && (
+                <p className="text-xs text-muted-foreground">
+                  Mengedit <strong>{editingValue}</strong> — Enter untuk simpan,
+                  Esc untuk batal.
+                </p>
+              )}
               {numberError && (
                 <p className="text-xs font-semibold text-destructive">
                   {numberError}

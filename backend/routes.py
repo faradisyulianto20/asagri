@@ -239,6 +239,41 @@ def admin_settings(db: Session = Depends(get_db)) -> dict:
     return data
 
 
+def _sync_recipient_rows(db: Session, entries: list[str]) -> None:
+    """Samakan baris WaNumberRequest dengan daftar penerima di settings.
+
+    - Nomor approved yang tidak lagi ada di daftar -> rejected (oleh "settings")
+    - Entri daftar tanpa baris -> dibuatkan baris approved
+    """
+    entry_set = {e for e in entries if e}
+    rows = db.scalars(select(WaNumberRequest)).all()
+    by_number = {r.number: r for r in rows}
+    now = datetime.now(timezone.utc)
+    for row in by_number.values():
+        if row.status == "approved" and row.number not in entry_set:
+            row.status = "rejected"
+            row.decided_at = now
+            row.decided_by = "settings"
+    for entry in entry_set:
+        row = by_number.get(entry)
+        if row is None:
+            db.add(
+                WaNumberRequest(
+                    name=entry,
+                    number=entry,
+                    kind="group" if entry.endswith("@g.us") else "number",
+                    status="approved",
+                    decided_at=now,
+                    decided_by="settings",
+                )
+            )
+        elif row.status != "approved":
+            row.status = "approved"
+            row.decided_at = now
+            row.decided_by = "settings"
+    db.commit()
+
+
 @router.put("/api/settings", dependencies=[Depends(_check_admin)])
 def update_admin_settings(
     payload: SettingsPayload, db: Session = Depends(get_db)
@@ -248,6 +283,9 @@ def update_admin_settings(
     if unknown:
         raise HTTPException(status_code=400, detail=f"Kunci tidak dikenal: {unknown}")
     updated = update_settings(db, data)
+    if "whatsapp_to" in data:
+        _sync_recipient_rows(db, recipients(db))
+    updated = get_settings(db)
     updated["thresholds"] = thresholds()
     return updated
 
@@ -642,6 +680,43 @@ def number_request_status(number: str, db: Session = Depends(get_db)) -> dict:
         "number": row.number,
         "kind": row.kind,
         "decided_at": row.decided_at.isoformat() if row.decided_at else None,
+    }
+
+
+class UnregisterPayload(BaseModel):
+    number: str
+
+
+@router.post("/api/wa/request/unregister")
+def unregister_request(
+    payload: UnregisterPayload, db: Session = Depends(get_db)
+) -> dict:
+    raw = payload.number.strip()
+    if "@g.us" in raw:
+        normalized = raw
+    else:
+        normalized = _normalize_number(raw)
+    if not normalized:
+        raise HTTPException(status_code=400, detail="Nomor tidak valid")
+    row = db.scalar(
+        select(WaNumberRequest).where(WaNumberRequest.number == normalized)
+    )
+    if row is None:
+        return {"status": "none", "number": normalized, "message": "Nomor ini tidak terdaftar."}
+    was_approved = row.status == "approved"
+    if was_approved:
+        remaining = [r for r in recipients(db) if r != normalized]
+        update_settings(db, {"whatsapp_to": ", ".join(remaining)})
+    db.delete(row)
+    db.commit()
+    return {
+        "status": "removed",
+        "number": normalized,
+        "message": (
+            "Pendaftaran berhasil dicopot. Nomor tidak lagi menerima notifikasi."
+            if was_approved
+            else "Permintaan pendaftaran dibatalkan."
+        ),
     }
 
 
