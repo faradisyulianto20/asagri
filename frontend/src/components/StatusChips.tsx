@@ -3,6 +3,7 @@ import { Fan, CloudFog, HelpCircle, Activity, Cable, Bug } from "lucide-react";
 import type { LatestData } from "../api";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ChipDef {
   label: string;
@@ -12,7 +13,7 @@ interface ChipDef {
   danger?: boolean;
 }
 
-export function StatusChips({ latest }: { latest: LatestData | null }) {
+export function StatusChips({ latest, loading }: { latest: LatestData | null; loading?: boolean }) {
   const items: ChipDef[] = [
     { label: "Kipas", icon: <Fan />, on: latest?.relay_fan },
     { label: "Humidifier", icon: <CloudFog />, on: latest?.relay_humidifier },
@@ -36,7 +37,7 @@ export function StatusChips({ latest }: { latest: LatestData | null }) {
   const dotClass = (c: ChipDef) => {
     if (c.danger) return "bg-destructive";
     if (c.warn) return "bg-accent";
-    if (c.on) return "bg-primary shadow-[0_0_0_4px_rgba(202,219,60,0.15)]";
+    if (c.on) return "bg-primary shadow-[0_0_0_4px_rgba(139,92,246,0.15)]";
     return "bg-muted-foreground/50";
   };
 
@@ -46,13 +47,17 @@ export function StatusChips({ latest }: { latest: LatestData | null }) {
         <CardTitle>Status Alat</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">
-        {items.map((c) => (
-          <Badge key={c.label} className={badgeClass(c)}>
-            <span className={`size-2 rounded-full ${dotClass(c)}`} />
-            {c.icon}
-            {c.label}
-          </Badge>
-        ))}
+        {loading
+          ? Array.from({ length: 7 }).map((_, i) => (
+              <Skeleton key={i} className="h-7 w-24 rounded-full" />
+            ))
+          : items.map((c) => (
+              <Badge key={c.label} className={badgeClass(c)}>
+                <span className={`size-2 rounded-full ${dotClass(c)}`} />
+                {c.icon}
+                {c.label}
+              </Badge>
+            ))}
       </CardContent>
       <div className="px-6 pb-4 text-xs text-muted-foreground">
         Status relay, buzzer &amp; sensor dari ESP32.

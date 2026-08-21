@@ -13,8 +13,8 @@
   --card-foreground: #474531;
   --popover: #ffffff;
   --popover-foreground: #474531;
-  --primary: #cadb3c;
-  --primary-foreground: #474531;
+  --primary: #8b5cf6;
+  --primary-foreground: #ffffff;
   --secondary: #a88aec;
   --secondary-foreground: #ffffff;
   --muted: #f4f5dc;
@@ -25,16 +25,16 @@
   --destructive-foreground: #ffffff;
   --border: #dfe6a8;
   --input: #dfe6a8;
-  --ring: #cadb3c;
-  --chart-1: #cadb3c;
-  --chart-2: #a88aec;
+  --ring: #8b5cf6;
+  --chart-1: #f97316;
+  --chart-2: #0ea5e9;
   --chart-3: #8b6fd4;
   --chart-4: #b8ca4e;
   --chart-5: #c09ee0;
   --sidebar: #ffffff;
   --sidebar-foreground: #474531;
-  --sidebar-primary: #cadb3c;
-  --sidebar-primary-foreground: #474531;
+  --sidebar-primary: #8b5cf6;
+  --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #f4f5dc;
   --sidebar-accent-foreground: #474531;
   --sidebar-border: #dfe6a8;
@@ -93,9 +93,6 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    background-image:
-      radial-gradient(1100px 520px at 100% -10%, #dfe6a8 0%, transparent 55%),
-      radial-gradient(900px 480px at -10% 110%, #e8ddf5 0%, transparent 50%);
     font-family: var(--font-sans);
   }
   @media (prefers-reduced-motion: reduce) {

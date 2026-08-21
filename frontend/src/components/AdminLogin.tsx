@@ -29,6 +29,14 @@ export function AdminLogin({
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     if (busy) return;
+    if (!username.trim()) {
+      setError("Username wajib diisi");
+      return;
+    }
+    if (!password) {
+      setError("Password wajib diisi");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {

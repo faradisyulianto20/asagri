@@ -150,7 +150,7 @@ export function AnalyticsPanel({ history }: { history: HistoryPoint[] }) {
         />
       </div>
 
-      <HistoryChart history={history} />
+      <HistoryChart />
 
       {stats.count > 0 && (
         <p className="text-center text-xs text-muted-foreground">

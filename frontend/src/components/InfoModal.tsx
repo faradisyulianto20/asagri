@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Leaf, MessageSquareText, Smartphone, Sparkles } from "lucide-react";
+import { MessageSquareText, Smartphone, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,7 +43,10 @@ export function InfoModal({ onClose }: { onClose: () => void }) {
         </DialogHeader>
 
         <div className="space-y-3">
-          <InfoBlock icon={<Leaf className="size-4" />} title="Cara kerja">
+          <InfoBlock
+            icon={<img src="/logo.png" alt="" className="size-4 object-contain" />}
+            title="Cara kerja"
+          >
             <p>
               ESP32 membaca sensor SHT31 tiap 2 detik, lalu{" "}
               <strong>mengirim data setiap 10 detik</strong> ke server.

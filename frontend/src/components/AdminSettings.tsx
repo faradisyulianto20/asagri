@@ -22,6 +22,12 @@ export function AdminSettings({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (!saved) return;
+    const id = setTimeout(() => setSaved(false), 3000);
+    return () => clearTimeout(id);
+  }, [saved]);
+
+  useEffect(() => {
     let alive = true;
     fetchAdminSettings(token)
       .then((data) => alive && setForm(data))
@@ -50,7 +56,7 @@ export function AdminSettings({ token }: { token: string }) {
         msg_fan_on: form.msg_fan_on,
         msg_humid_on: form.msg_humid_on,
         msg_extreme: form.msg_extreme,
-        cooldown_minutes: form.cooldown_minutes,
+        cooldown_minutes: Number(form.cooldown_minutes) || 0,
       });
       setForm(updated);
       setSaved(true);

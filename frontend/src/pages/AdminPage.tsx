@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Leaf, FlaskConical } from "lucide-react";
+import { FlaskConical, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { HumidityCard } from "../components/HumidityCard";
@@ -23,7 +23,7 @@ import { Toaster } from "@/components/ui/sonner";
 
 export default function AdminPage() {
   const navigate = useNavigate();
-  const { latest, history, wa, notify, thresholds, error, refresh } = useDashboardData();
+  const { latest, history, wa, notify, thresholds, error, loading, refresh } = useDashboardData();
   const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY),
   );
@@ -36,6 +36,7 @@ export default function AdminPage() {
 
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const showQr = Boolean(wa && !wa.connected && wa.qr);
 
@@ -100,14 +101,14 @@ export default function AdminPage() {
     return (
       <div className="mx-auto max-w-md px-4 py-12">
         <header className="mb-6 flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-2xl bg-gradient-to-br from-primary to-secondary shadow-md shadow-primary/20">
-            <Leaf className="size-6 text-primary-foreground" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Logo Asagri"
+            className="size-12 rounded-2xl object-cover shadow-md shadow-primary/20"
+          />
           <div>
-            <h1 className="font-heading text-xl font-extrabold tracking-tight">
-              <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-                Admin Asagri
-              </span>
+            <h1 className="font-heading text-xl font-extrabold tracking-tight text-foreground">
+              Admin Asagri
             </h1>
             <p className="text-[13px] text-muted-foreground">
               Login untuk mengelola monitor
@@ -226,14 +227,14 @@ export default function AdminPage() {
             <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(300px,1fr)] lg:items-start">
               <section className="grid gap-4">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <TempCard latest={latest} />
-                  <HumidityCard latest={latest} />
+                  <TempCard latest={latest} loading={loading} />
+                  <HumidityCard latest={latest} loading={loading} />
                 </div>
-                <HistoryChart history={history} />
+                <HistoryChart />
               </section>
 
               <aside className="grid gap-4">
-                <StatusChips latest={latest} />
+                <StatusChips latest={latest} loading={loading} />
                 <WaCard
                   wa={wa}
                   notify={notify}
@@ -252,7 +253,7 @@ export default function AdminPage() {
           {/* Devices Tab */}
           {tab === "devices" && (
             <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
-              <StatusChips latest={latest} />
+              <StatusChips latest={latest} loading={loading} />
               <WaCard
                 wa={wa}
                 notify={notify}

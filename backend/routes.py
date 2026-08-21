@@ -17,7 +17,7 @@ from fastapi import (
 )
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.staticfiles import StaticFiles
@@ -172,19 +172,56 @@ def history(
     hours: int = 24, db: Session = Depends(get_db)
 ) -> list[dict]:
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
-    rows = db.scalars(
-        select(SensorReading)
+
+    if hours <= 24:
+        rows = db.scalars(
+            select(SensorReading)
+            .where(SensorReading.created_at >= since)
+            .order_by(SensorReading.created_at.asc())
+        ).all()
+        return [
+            {
+                "time": r.created_at.isoformat(),
+                "temperature": r.temperature,
+                "humidity": r.humidity,
+                "relay_fan": r.relay_fan,
+                "relay_humidifier": r.relay_humidifier,
+                "source": r.source,
+            }
+            for r in rows
+        ]
+
+    # Agregasi otomatis untuk rentang panjang agar jumlah titik tetap wajar
+    if hours <= 72:
+        bucket = 600  # 10 menit
+    elif hours <= 168:
+        bucket = 1800  # 30 menit
+    else:
+        bucket = 7200  # 2 jam
+
+    epoch = func.extract("epoch", SensorReading.created_at)
+    bucket_start = func.to_timestamp(func.floor(epoch / bucket) * bucket)
+    rows = db.execute(
+        select(
+            bucket_start.label("time"),
+            func.avg(SensorReading.temperature).label("temperature"),
+            func.avg(SensorReading.humidity).label("humidity"),
+            func.bool_or(SensorReading.relay_fan).label("relay_fan"),
+            func.bool_or(SensorReading.relay_humidifier).label(
+                "relay_humidifier"
+            ),
+        )
         .where(SensorReading.created_at >= since)
-        .order_by(SensorReading.created_at.asc())
+        .group_by(bucket_start)
+        .order_by(bucket_start.asc())
     ).all()
     return [
         {
-            "time": r.created_at.isoformat(),
-            "temperature": r.temperature,
-            "humidity": r.humidity,
-            "relay_fan": r.relay_fan,
-            "relay_humidifier": r.relay_humidifier,
-            "source": r.source,
+            "time": r.time.isoformat(),
+            "temperature": round(float(r.temperature), 2),
+            "humidity": round(float(r.humidity), 2),
+            "relay_fan": bool(r.relay_fan),
+            "relay_humidifier": bool(r.relay_humidifier),
         }
         for r in rows
     ]

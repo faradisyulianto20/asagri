@@ -41,33 +41,40 @@ export function WaCard({
   const connected = Boolean(wa?.connected);
   const starting = Boolean(wa?.starting);
   const hasError = Boolean(wa?.error);
+  const checking = wa === null;
   const [busy, setBusy] = useState<"test" | "disconnect" | null>(null);
 
-  const detail = connected
-    ? wa?.number
-      ? `Nomor: ${formatNumber(wa.number)}`
-      : "Gateway terhubung"
-    : hasError
-      ? wa?.error
+  const detail = checking
+    ? "Memeriksa status…"
+    : connected
+      ? wa?.number
+        ? `Nomor: ${formatNumber(wa.number)}`
+        : "Gateway terhubung"
+      : hasError
+        ? wa?.error
+        : starting
+          ? "Menghubungkan…"
+          : "Scan QR untuk menghubungkan";
+
+  const badge = checking
+    ? "Memeriksa…"
+    : connected
+      ? "Terhubung"
       : starting
-        ? "Menghubungkan…"
-        : "Scan QR untuk menghubungkan";
+        ? "Menghubungi…"
+        : hasError
+          ? "Error"
+          : "Terputus";
 
-  const badge = connected
-    ? "Terhubung"
-    : starting
-      ? "Menghubungi…"
-      : hasError
-        ? "Error"
-        : "Terputus";
-
-  const badgeClass = connected
-    ? "shrink-0 bg-green-500/10 text-green-600"
-    : starting
-      ? "shrink-0 bg-yellow-500/10 text-yellow-600"
-      : hasError
-        ? "shrink-0 bg-red-500/10 text-red-600"
-        : "shrink-0 bg-orange-500/10 text-orange-600";
+  const badgeClass = checking
+    ? "shrink-0 bg-muted text-muted-foreground"
+    : connected
+      ? "shrink-0 bg-green-500/10 text-green-600"
+      : starting
+        ? "shrink-0 bg-yellow-500/10 text-yellow-600"
+        : hasError
+          ? "shrink-0 bg-red-500/10 text-red-600"
+          : "shrink-0 bg-orange-500/10 text-orange-600";
 
   const last = notify?.last;
   const lastText = last
@@ -116,7 +123,9 @@ export function WaCard({
             </CardDescription>
           </div>
           <Badge className={badgeClass}>
-            {connected ? (
+            {checking ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : connected ? (
               <CheckCircle2 className="size-3" />
             ) : starting ? (
               <Loader2 className="size-3 animate-spin" />
