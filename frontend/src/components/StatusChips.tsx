@@ -28,7 +28,7 @@ export function StatusChips({ latest, loading }: { latest: LatestData | null; lo
     if (c.danger)
       return "h-7 rounded-full border-destructive/40 bg-destructive/10 px-3 text-destructive";
     if (c.warn)
-      return "h-7 rounded-full border-accent/40 bg-accent/10 px-3 text-accent";
+      return "h-7 rounded-full border-warning/40 bg-warning/10 px-3 text-warning";
     if (c.on)
       return "h-7 rounded-full border-primary/40 bg-primary/10 px-3 text-primary";
     return "h-7 rounded-full border-border bg-muted/50 px-3 text-muted-foreground";
@@ -36,8 +36,8 @@ export function StatusChips({ latest, loading }: { latest: LatestData | null; lo
 
   const dotClass = (c: ChipDef) => {
     if (c.danger) return "bg-destructive";
-    if (c.warn) return "bg-accent";
-    if (c.on) return "bg-primary shadow-[0_0_0_4px_rgba(139,92,246,0.15)]";
+    if (c.warn) return "bg-warning";
+    if (c.on) return "bg-primary ring-[3px] ring-primary/20";
     return "bg-muted-foreground/50";
   };
 

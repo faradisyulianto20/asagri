@@ -5,4 +5,5 @@ __pycache__/
 node_modules/
 frontend/dist/
 backend/static/dist/
-wa-gateway/session/
+wa-gateway/baileys_auth/
+*.tsbuildinfo

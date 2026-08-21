@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Loader2, Save, Settings } from "lucide-react";
+import { Loader2, Plus, Save, Settings, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAdminSettings,
@@ -17,6 +17,9 @@ const PLACEHOLDER_NUMBERS = ["6281234567890"];
 
 export function AdminSettings({ token }: { token: string }) {
   const [form, setForm] = useState<AdminSettingsData | null>(null);
+  const [numbers, setNumbers] = useState<string[]>([]);
+  const [numberInput, setNumberInput] = useState("");
+  const [numberError, setNumberError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -30,7 +33,13 @@ export function AdminSettings({ token }: { token: string }) {
   useEffect(() => {
     let alive = true;
     fetchAdminSettings(token)
-      .then((data) => alive && setForm(data))
+      .then((data) => {
+        if (!alive) return;
+        setForm(data);
+        setNumbers(
+          data.whatsapp_to.split(",").map((x) => x.trim()).filter(Boolean),
+        );
+      })
       .catch((e) => {
         const msg = e instanceof Error ? e.message : String(e);
         setError(msg);
@@ -56,7 +65,7 @@ export function AdminSettings({ token }: { token: string }) {
         msg_fan_on: form.msg_fan_on,
         msg_humid_on: form.msg_humid_on,
         msg_extreme: form.msg_extreme,
-        cooldown_minutes: Number(form.cooldown_minutes) || 0,
+        cooldown_minutes: String(Number(form.cooldown_minutes) || 0),
       });
       setForm(updated);
       setSaved(true);
@@ -89,9 +98,56 @@ export function AdminSettings({ token }: { token: string }) {
   }
 
   const th = form.thresholds;
-  const hasPlaceholder = PLACEHOLDER_NUMBERS.some((n) =>
-    form.whatsapp_to.split(",").map((x) => x.trim()).includes(n),
-  );
+  const phoneNumbers = numbers.filter((n) => !n.endsWith("@g.us"));
+  const groupIds = numbers.filter((n) => n.endsWith("@g.us"));
+  const hasPlaceholder = PLACEHOLDER_NUMBERS.some((n) => numbers.includes(n));
+
+  const syncNumbers = (next: string[]) => {
+    setNumbers(next);
+    set("whatsapp_to", next.join(", "));
+  };
+
+  const pushNumbers = (raw: string): boolean => {
+    const parts = raw.split(",").map((x) => x.trim()).filter(Boolean);
+    if (parts.length === 0) return true;
+    const next = [...numbers];
+    let err: string | null = null;
+    for (const p of parts) {
+      if (!/^\d+$/.test(p) && !p.endsWith("@g.us")) {
+        err = "Format tidak valid: gunakan angka internasional tanpa tanda +, atau ID group berakhiran @g.us";
+        continue;
+      }
+      if (next.includes(p)) {
+        err = `${p} sudah terdaftar`;
+        continue;
+      }
+      next.push(p);
+    }
+    setNumberError(err);
+    if (next.length > numbers.length) syncNumbers(next);
+    return err === null;
+  };
+
+  const handleNumberInput = (value: string) => {
+    const commaIdx = value.lastIndexOf(",");
+    if (commaIdx === -1) {
+      setNumberInput(value);
+      if (numberError) setNumberError(null);
+      return;
+    }
+    pushNumbers(value.slice(0, commaIdx));
+    setNumberInput(value.slice(commaIdx + 1));
+  };
+
+  const commitNumberInput = () => {
+    if (!numberInput.trim()) return;
+    if (pushNumbers(numberInput)) setNumberInput("");
+  };
+
+  const removeNumber = (n: string) => {
+    syncNumbers(numbers.filter((x) => x !== n));
+    if (numberError) setNumberError(null);
+  };
 
   return (
     <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
@@ -105,16 +161,87 @@ export function AdminSettings({ token }: { token: string }) {
         <CardContent>
           <form onSubmit={save} className="grid gap-4">
             <div className="grid gap-2">
-              <Label htmlFor="whatsapp-to">
-                Nomor penerima (pisahkan dengan koma)
-              </Label>
-              <Textarea
-                id="whatsapp-to"
-                rows={2}
-                value={form.whatsapp_to}
-                onChange={(e) => set("whatsapp_to", e.target.value)}
-                placeholder="6281111111111, 12036301234567890@g.us"
-              />
+              <Label htmlFor="whatsapp-number">Nomor penerima WhatsApp</Label>
+              {phoneNumbers.length > 0 && (
+                <div className="grid gap-1.5">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Nomor HP · {phoneNumbers.length}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {phoneNumbers.map((n) => (
+                      <span
+                        key={n}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground"
+                      >
+                        {n}
+                        <button
+                          type="button"
+                          aria-label={`Hapus ${n}`}
+                          className="grid size-5 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => removeNumber(n)}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {groupIds.length > 0 && (
+                <div className="grid gap-1.5">
+                  <p className="text-[11px] font-medium text-muted-foreground">
+                    Group WhatsApp · {groupIds.length}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {groupIds.map((n) => (
+                      <span
+                        key={n}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-muted/50 pl-3 pr-1.5 text-xs font-medium text-foreground"
+                      >
+                        {n}
+                        <button
+                          type="button"
+                          aria-label={`Hapus ${n}`}
+                          className="grid size-5 cursor-pointer place-items-center rounded-full text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          onClick={() => removeNumber(n)}
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Input
+                  id="whatsapp-number"
+                  className="h-10 flex-1"
+                  value={numberInput}
+                  aria-invalid={numberError !== null}
+                  placeholder="6281111111111 atau 12036301234567890@g.us"
+                  onChange={(e) => handleNumberInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      commitNumberInput();
+                    }
+                  }}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-label="Tambah nomor"
+                  className="h-10 w-10 shrink-0 cursor-pointer p-0"
+                  onClick={commitNumberInput}
+                >
+                  <Plus />
+                </Button>
+              </div>
+              {numberError && (
+                <p className="text-xs font-semibold text-destructive">
+                  {numberError}
+                </p>
+              )}
               <p className="text-xs text-muted-foreground">
                 Format internasional tanpa tanda + dan tanpa awalan 0. Bisa
                 ditambah ID group (…@g.us) — group juga bisa didaftarkan user

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { FlaskConical, Menu } from "lucide-react";
 import { toast } from "sonner";
 import { useDashboardData } from "../hooks/useDashboardData";
+import { useWaRequests } from "../hooks/useWaRequests";
 import { HumidityCard } from "../components/HumidityCard";
 import { TempCard } from "../components/TempCard";
 import { StatusChips } from "../components/StatusChips";
@@ -37,6 +38,10 @@ export default function AdminPage() {
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [infoOpen, setInfoOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  const waRequests = useWaRequests(token);
+  const pendingRequestCount =
+    waRequests.requests?.filter((r) => r.status === "pending").length ?? 0;
 
   const showQr = Boolean(wa && !wa.connected && wa.qr);
 
@@ -76,6 +81,26 @@ export default function AdminPage() {
       setQrOpen(false);
     }
   }, [wa?.connected, qrAutoOpened]);
+
+  /* ── Sidebar drawer: Escape close, scroll lock, auto-close di desktop ── */
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSidebarOpen(false);
+    };
+    const onResize = () => {
+      if (window.innerWidth >= 1024) setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", onResize);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", onResize);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [sidebarOpen]);
 
   const onLoginSuccess = (t: string, name: string) => {
     localStorage.setItem(TOKEN_KEY, t);
@@ -158,40 +183,55 @@ export default function AdminPage() {
         onNavigate={handleNavigate}
         username={username ?? "admin"}
         onLogout={onLogout}
+        open={sidebarOpen}
+        onToggle={() => setSidebarOpen((v) => !v)}
+        notificationCount={pendingRequestCount}
       />
 
       {/* Main Content */}
-      <div className="ml-64">
+      <div className="lg:ml-64">
         {/* Top Header Bar */}
-        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border bg-background/80 px-6 py-4 backdrop-blur-md">
-          <div>
-            <h2 className="font-heading text-lg font-bold text-foreground">
-              {tabTitles[tab]}
-            </h2>
-            <p className="text-[12px] text-muted-foreground">{lastUpdate}</p>
+        <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-border bg-background/80 px-4 py-4 backdrop-blur-md sm:px-6">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Buka menu navigasi"
+              className="h-9 w-9 shrink-0 cursor-pointer rounded-xl lg:hidden"
+              type="button"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <Menu />
+            </Button>
+            <div>
+              <h2 className="font-heading text-lg font-bold text-foreground">
+                {tabTitles[tab]}
+              </h2>
+              <p className="text-[12px] text-muted-foreground">{lastUpdate}</p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <Badge
               className={`h-8 gap-1.5 rounded-full px-3 ${
                 wa?.connected
-                  ? "bg-green-500/10 text-green-600"
+                  ? "bg-success/10 text-success"
                   : wa?.starting
-                    ? "bg-yellow-500/10 text-yellow-600"
+                    ? "bg-info/10 text-info"
                     : wa?.error
-                      ? "bg-red-500/10 text-red-600"
-                      : "bg-orange-500/10 text-orange-600"
+                      ? "bg-destructive/10 text-destructive"
+                      : "bg-warning/10 text-warning"
               }`}
             >
               <span
                 className={`size-2 rounded-full ${
                   wa?.connected
-                    ? "bg-green-500 shadow-[0_0_0_4px_rgba(22,163,74,0.15)]"
+                    ? "bg-success ring-[3px] ring-success/20"
                     : wa?.starting
-                      ? "bg-yellow-500 shadow-[0_0_0_4px_rgba(234,179,8,0.15)]"
+                      ? "bg-info ring-[3px] ring-info/20"
                       : wa?.error
-                        ? "bg-red-500 shadow-[0_0_0_4px_rgba(220,38,38,0.15)]"
-                        : "bg-orange-500 shadow-[0_0_0_4px_rgba(249,115,22,0.15)]"
+                        ? "bg-destructive ring-[3px] ring-destructive/20"
+                        : "bg-warning ring-[3px] ring-warning/20"
                 }`}
               />
               {wa?.connected
@@ -268,7 +308,13 @@ export default function AdminPage() {
           {/* Notifications Tab */}
           {tab === "notifications" && (
             <div className="grid gap-4">
-              <RequestList token={token} />
+              <RequestList
+                token={token}
+                requests={waRequests.requests}
+                error={waRequests.error}
+                loading={waRequests.loading}
+                reload={waRequests.reload}
+              />
             </div>
           )}
 

@@ -54,9 +54,9 @@ const TOUR_STEPS: TourStep[] = [
           Badge menunjukkan kondisi terkini relay, buzzer, dan sensor dari ESP32:
         </p>
         <ul className="mt-2 list-disc space-y-1 pl-5">
-          <li><strong className="text-green-600">Hijau</strong> — aktif (kipas/humidifier menyala)</li>
-          <li><strong className="text-yellow-600">Kuning</strong> — peringatan (sensor error / data simulasi)</li>
-          <li><strong className="text-red-600">Merah</strong> — danger (buzzer berbunyi)</li>
+          <li><strong className="text-primary">Ungu</strong> — aktif (kipas/humidifier menyala)</li>
+          <li><strong className="text-warning">Kuning/amber</strong> — peringatan (sensor error / data simulasi)</li>
+          <li><strong className="text-destructive">Merah</strong> — danger (buzzer berbunyi)</li>
           <li><strong>Abu-abu</strong> — tidak aktif</li>
         </ul>
       </>

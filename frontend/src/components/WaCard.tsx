@@ -69,12 +69,12 @@ export function WaCard({
   const badgeClass = checking
     ? "shrink-0 bg-muted text-muted-foreground"
     : connected
-      ? "shrink-0 bg-green-500/10 text-green-600"
+      ? "shrink-0 bg-success/10 text-success"
       : starting
-        ? "shrink-0 bg-yellow-500/10 text-yellow-600"
+        ? "shrink-0 bg-info/10 text-info"
         : hasError
-          ? "shrink-0 bg-red-500/10 text-red-600"
-          : "shrink-0 bg-orange-500/10 text-orange-600";
+          ? "shrink-0 bg-destructive/10 text-destructive"
+          : "shrink-0 bg-warning/10 text-warning";
 
   const last = notify?.last;
   const lastText = last

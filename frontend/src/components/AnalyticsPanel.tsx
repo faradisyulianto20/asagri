@@ -29,7 +29,7 @@ function StatCard({
       <CardContent className="flex items-center gap-4 p-4">
         <div
           className="grid size-11 shrink-0 place-items-center rounded-xl"
-          style={{ backgroundColor: `${color}18` }}
+          style={{ backgroundColor: `color-mix(in srgb, ${color} 12%, transparent)` }}
         >
           <span style={{ color }}>{icon}</span>
         </div>
@@ -97,56 +97,56 @@ export function AnalyticsPanel({ history }: { history: HistoryPoint[] }) {
           label="Avg Suhu"
           value={stats.avgTemp}
           unit="°C"
-          color="#cadb3c"
+          color="var(--chart-1)"
         />
         <StatCard
           icon={<TrendingDown className="size-5" />}
           label="Min Suhu"
           value={stats.minTemp}
           unit="°C"
-          color="#a88aec"
+          color="var(--chart-2)"
         />
         <StatCard
           icon={<TrendingUp className="size-5" />}
           label="Max Suhu"
           value={stats.maxTemp}
           unit="°C"
-          color="#dc2626"
+          color="var(--destructive)"
         />
         <StatCard
           icon={<Droplets className="size-5" />}
           label="Avg Kelembaban"
           value={stats.avgHum}
           unit="%"
-          color="#3b82f6"
+          color="var(--info)"
         />
         <StatCard
           icon={<TrendingDown className="size-5" />}
           label="Min Kelembaban"
           value={stats.minHum}
           unit="%"
-          color="#a88aec"
+          color="var(--chart-4)"
         />
         <StatCard
           icon={<TrendingUp className="size-5" />}
           label="Max Kelembaban"
           value={stats.maxHum}
           unit="%"
-          color="#f97316"
+          color="var(--warning)"
         />
         <StatCard
           icon={<Fan className="size-5" />}
           label="Kipas Uptime"
           value={stats.fanUp}
           unit=""
-          color="#16a34a"
+          color="var(--primary)"
         />
         <StatCard
           icon={<CloudFog className="size-5" />}
           label="Humidifier Uptime"
           value={stats.humidUp}
           unit=""
-          color="#0ea5e9"
+          color="var(--success)"
         />
       </div>
 

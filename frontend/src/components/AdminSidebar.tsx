@@ -6,11 +6,11 @@ import {
   Settings,
   HelpCircle,
   LogOut,
-  Sprout,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
+import { Button } from "@/components/ui/button";
 
 export type SidebarTab =
   | "dashboard"
@@ -41,6 +41,7 @@ export function AdminSidebar({
   onLogout,
   open,
   onToggle,
+  notificationCount = 0,
 }: {
   active: SidebarTab;
   onNavigate: (tab: SidebarTab) => void;
@@ -48,6 +49,7 @@ export function AdminSidebar({
   onLogout: () => void;
   open: boolean;
   onToggle: () => void;
+  notificationCount?: number;
 }) {
   const handleNav = (tab: SidebarTab) => {
     onNavigate(tab);
@@ -95,6 +97,8 @@ export function AdminSidebar({
           {mainNav.map((item) => {
             const Icon = item.icon;
             const isActive = active === item.id;
+            const showDot =
+              item.id === "notifications" && notificationCount > 0;
             return (
               <button
                 key={item.id}
@@ -107,7 +111,15 @@ export function AdminSidebar({
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                <Icon className="size-4" />
+                <span className="relative shrink-0">
+                  <Icon className="size-4" />
+                  {showDot && (
+                    <span
+                      aria-label={`${notificationCount} permintaan menunggu`}
+                      className="absolute -right-1 -top-1 size-2.5 rounded-full bg-destructive ring-2 ring-card"
+                    />
+                  )}
+                </span>
                 {item.label}
               </button>
             );
@@ -117,7 +129,7 @@ export function AdminSidebar({
         <Separator />
 
         {/* Bottom Section */}
-        <div className="space-y-1 px-3 py-4">
+        <div className="space-y-3 px-3 py-4">
           <button
             type="button"
             onClick={() => handleNav("help")}
@@ -132,19 +144,27 @@ export function AdminSidebar({
             Help Center
           </button>
 
-          <div className="flex items-center gap-2 rounded-xl bg-muted/50 px-3 py-2.5">
-            <Sprout className="size-4 shrink-0 text-primary" />
-            <span className="flex-1 truncate text-xs font-medium text-foreground">
-              Admin: {username}
+          <div className="flex items-center gap-2.5 rounded-xl bg-muted/50 px-3 py-2.5">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-xs font-bold text-primary">
+              {username.charAt(0).toUpperCase()}
             </span>
-            <button
-              type="button"
-              onClick={onLogout}
-              className="flex shrink-0 cursor-pointer items-center gap-1 text-xs text-destructive hover:underline"
-            >
-              <LogOut className="size-3.5" />
-            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-foreground">
+                {username}
+              </p>
+              <p className="text-[11px] text-muted-foreground">Administrator</p>
+            </div>
           </div>
+
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onLogout}
+            className="h-9 w-full cursor-pointer border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+          >
+            <LogOut />
+            Keluar
+          </Button>
         </div>
       </aside>
     </>

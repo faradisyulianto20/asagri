@@ -172,7 +172,7 @@ export function CoachmarkTour({ steps, active, onClose }: CoachmarkTourProps) {
             width: getRect(targetEl).width + 8,
             height: getRect(targetEl).height + 8,
             boxShadow: "0 0 0 9999px rgba(0,0,0,0)",
-            border: "2px solid rgba(139,92,246,0.8)",
+            border: "2px solid color-mix(in srgb, var(--primary) 80%, transparent)",
             zIndex: 51,
             transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
           }}

@@ -32,7 +32,7 @@ function InfoBlock({
 export function InfoModal({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-lg overflow-y-auto text-left">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto text-left sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-lg">
             Selamat Datang di Asagri Monitor
