@@ -158,13 +158,16 @@ async function clearSessionCompletely() {
     console.error("[gateway] gagal hapus folder sesi:", err.message);
   }
   if (BACKEND_URL && BACKEND_TOKEN) {
-    const res = await apiCall("/api/wa/session", { method: "DELETE" });
-    if (!res.ok) {
-      const err = new Error(`Gagal hapus sesi dari database: status ${res.status}`);
-      console.error("[gateway]", err.message);
-      throw err;
+    try {
+      const res = await apiCall("/api/wa/session", { method: "DELETE" });
+      if (!res.ok) {
+        console.error("[gateway] backend session delete returned:", res.status);
+      } else {
+        console.log("[gateway] sesi dihapus dari database");
+      }
+    } catch (err) {
+      console.error("[gateway] gagal hapus sesi dari backend:", err.message);
     }
-    console.log("[gateway] sesi dihapus dari database");
   }
 }
 
@@ -548,16 +551,34 @@ async function createSock() {
         console.error(
           `[gateway] LOGOUT/bad ke-${bootLogoutStreak}/${MAX_LOGOUT_STREAK}`
         );
+
         if (bootLogoutStreak >= MAX_LOGOUT_STREAK) {
           bootLogoutStreak = 0;
+          skipRestoreSession = true;
           console.error(
             "[gateway] LOGOUT berulang, sesi dihapus total; QR baru akan disiapkan"
           );
           clearSessionCompletely().finally(() =>
-            scheduleRestart("LOGOUT berulang — sesi dihapus", true)
+            scheduleRestart("LOGOUT berulang — sesi dihapus total", true)
           );
           return;
         }
+
+        skipRestoreSession = true;
+        try {
+          await fs.promises.rm(DATA_PATH, { recursive: true, force: true });
+          fs.mkdirSync(DATA_PATH, { recursive: true });
+          console.log("[gateway] sesi lokal dihapus (logout detected)");
+        } catch {}
+        setTimeout(
+          () =>
+            scheduleRestart(
+              `terputus logout/bad (streak ${bootLogoutStreak})`,
+              true
+            ),
+          5000
+        );
+        return;
       }
 
       if (statusCode === DisconnectReason.restartRequired) {
