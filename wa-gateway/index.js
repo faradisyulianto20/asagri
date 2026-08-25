@@ -337,7 +337,6 @@ app.post("/disconnect", async (req, res) => {
 
   restarting = false;
   lastRestartAttempt = 0;
-  intentionalDisconnect = true;
   healthFailures = 0;
   qrDataUrl = null;
   status = {
@@ -358,6 +357,9 @@ app.post("/disconnect", async (req, res) => {
     console.error("[gateway] gagal clear session:", err.message);
     sendJson(res, { status: "disconnected", warning: err.message });
   }
+
+  intentionalDisconnect = false;
+  bootLogoutStreak = 0;
 
   setTimeout(() => startSock(), 2000);
 });
