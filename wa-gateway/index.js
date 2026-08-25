@@ -325,7 +325,7 @@ app.post("/invite", async (req, res) => {
   }
 });
 
-app.post("/disconnect", (req, res) => {
+app.post("/disconnect", async (req, res) => {
   const auth = req.headers.authorization || "";
   if (auth !== `Bearer ${AUTH_TOKEN}`)
     return sendJson(res, { error: "unauthorized" }, 401);
