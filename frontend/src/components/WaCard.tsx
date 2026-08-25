@@ -163,6 +163,17 @@ export function WaCard({
                 {busy === "disconnect" ? "Memutus…" : "Putuskan & Ganti Nomor"}
               </Button>
             </>
+          ) : hasError ? (
+            <Button
+              variant="destructive"
+              className="h-10 w-full cursor-pointer bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              type="button"
+              onClick={() => run("disconnect")}
+              disabled={busy !== null}
+            >
+              <Unplug />
+              {busy === "disconnect" ? "Memutus…" : "Putuskan & Sambung Ulang"}
+            </Button>
           ) : (
             <Button
               variant="default"
