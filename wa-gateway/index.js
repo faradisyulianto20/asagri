@@ -53,6 +53,7 @@ let lastRestartReason = null;
 let bootLogoutStreak = 0;
 let lastBackupTime = 0;
 let saveState = null;
+let skipRestoreSession = false;
 
 function withTimeout(promise, ms, label) {
   return Promise.race([
@@ -157,18 +158,13 @@ async function clearSessionCompletely() {
     console.error("[gateway] gagal hapus folder sesi:", err.message);
   }
   if (BACKEND_URL && BACKEND_TOKEN) {
-    try {
-      const res = await apiCall("/api/wa/session", { method: "DELETE" });
-      console.log(
-        "[gateway] sesi dihapus dari database",
-        res.ok ? "" : `(status ${res.status})`
-      );
-    } catch (err) {
-      console.error(
-        "[gateway] gagal hapus sesi dari database:",
-        err.message
-      );
+    const res = await apiCall("/api/wa/session", { method: "DELETE" });
+    if (!res.ok) {
+      const err = new Error(`Gagal hapus sesi dari database: status ${res.status}`);
+      console.error("[gateway]", err.message);
+      throw err;
     }
+    console.log("[gateway] sesi dihapus dari database");
   }
 }
 
@@ -273,7 +269,7 @@ app.post("/send", async (req, res) => {
     console.error("[gateway] kirim pesan gagal:", err.message);
     const msg = err.message || String(err);
     if (msg.includes("timed out")) {
-      scheduleRestart("sendMessage timeout — link WhatsApp diduga mati");
+      scheduleRestart("sendMessage timeout — link WhatsApp diduga mati", true);
       return sendJson(
         res,
         {
@@ -284,7 +280,7 @@ app.post("/send", async (req, res) => {
       );
     }
     if (msg.match(/Connection Closed|Connection Lost/)) {
-      scheduleRestart("kirim gagal — koneksi terputus");
+      scheduleRestart("kirim gagal — koneksi terputus", true);
       return sendJson(
         res,
         {
@@ -334,11 +330,15 @@ app.post("/disconnect", (req, res) => {
   if (auth !== `Bearer ${AUTH_TOKEN}`)
     return sendJson(res, { error: "unauthorized" }, 401);
 
+  if (sock) {
+    try { sock.end(undefined); } catch {}
+    sock = null;
+  }
+
   restarting = false;
   lastRestartAttempt = 0;
   intentionalDisconnect = true;
   healthFailures = 0;
-  sock = null;
   qrDataUrl = null;
   status = {
     connected: false,
@@ -348,10 +348,18 @@ app.post("/disconnect", (req, res) => {
     error: null,
   };
 
-  sendJson(res, { status: "disconnected" });
-  console.log("[gateway] sesi diputus, QR baru akan dibuat");
+  skipRestoreSession = true;
 
-  clearSessionCompletely().finally(() => startSock());
+  try {
+    await clearSessionCompletely();
+    console.log("[gateway] sesi diputus total, QR baru akan dibuat");
+    sendJson(res, { status: "disconnected" });
+  } catch (err) {
+    console.error("[gateway] gagal clear session:", err.message);
+    sendJson(res, { status: "disconnected", warning: err.message });
+  }
+
+  setTimeout(() => startSock(), 2000);
 });
 
 app.get("/", (_req, res) => {
@@ -442,7 +450,13 @@ async function startSock() {
 }
 
 async function createSock() {
-  const restored = await restoreSessionFromBackend();
+  let restored = false;
+  if (skipRestoreSession) {
+    console.log("[gateway] skip restore sesi (session sedang di-clear)");
+    skipRestoreSession = false;
+  } else {
+    restored = await restoreSessionFromBackend();
+  }
 
   const { state, saveCreds } = await useMultiFileAuthState(DATA_PATH);
   saveState = saveCreds;
