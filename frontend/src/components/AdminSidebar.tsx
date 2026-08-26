@@ -6,6 +6,7 @@ import {
   Settings,
   HelpCircle,
   LogOut,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,6 +18,7 @@ export type SidebarTab =
   | "analytics"
   | "devices"
   | "notifications"
+  | "mobile_push"
   | "settings"
   | "help";
 
@@ -31,6 +33,7 @@ const mainNav: NavItem[] = [
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "devices", label: "Devices", icon: Cpu },
   { id: "notifications", label: "Notifications", icon: Bell },
+  { id: "mobile_push", label: "Mobile Push", icon: Smartphone },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

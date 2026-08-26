@@ -10,6 +10,12 @@ export interface LatestData {
   sensor_error?: boolean;
   source?: string;
   created_at?: string;
+  admin_notification?: {
+    id: string;
+    title: string;
+    body: string;
+    created_at: string;
+  } | null;
 }
 
 export interface HistoryPoint {
@@ -305,4 +311,19 @@ export function rejectWaRequest(token: string, id: number): Promise<WaRequest> {
   return adminFetch<WaRequest>(`/api/wa/requests/${id}/reject`, token, {
     method: "POST",
   });
+}
+
+export function sendMobileNotify(
+  token: string,
+  title: string,
+  body: string,
+): Promise<{ status: string; id: string }> {
+  return adminFetch<{ status: string; id: string }>(
+    "/api/admin/mobile-notify",
+    token,
+    {
+      method: "POST",
+      body: JSON.stringify({ title, body }),
+    },
+  );
 }

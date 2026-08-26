@@ -39,6 +39,8 @@ from settings_store import (
 
 router = APIRouter()
 
+_pending_mobile_notification: dict | None = None
+
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> FileResponse:
@@ -117,6 +119,15 @@ class SimulatePayload(BaseModel):
     humidity: float = Field(..., ge=0, le=100)
 
 
+class MobileNotifyPayload(BaseModel):
+    title: str = Field(..., min_length=1, max_length=100)
+    body: str = Field(..., min_length=1, max_length=500)
+
+
+class MobileNotifyReadPayload(BaseModel):
+    id: str
+
+
 class SettingsPayload(BaseModel):
     whatsapp_to: str | None = None
     msg_fan_on: str | None = None
@@ -150,21 +161,24 @@ def receive_sensor(
 @router.get("/api/latest")
 def latest(db: Session = Depends(get_db)) -> dict:
     row = db.scalar(select(SensorReading).order_by(desc(SensorReading.id)).limit(1))
-    if row is None:
-        return {"available": False}
-    return {
-        "available": True,
-        "temperature": row.temperature,
-        "humidity": row.humidity,
-        "relay_fan": row.relay_fan,
-        "relay_humidifier": row.relay_humidifier,
-        "relay_3": row.relay_3,
-        "relay_4": row.relay_4,
-        "buzzer": row.buzzer,
-        "sensor_error": row.sensor_error,
-        "source": row.source,
-        "created_at": row.created_at.isoformat(),
+    result = {
+        "available": False,
+        "admin_notification": _pending_mobile_notification,
     }
+    if row is None:
+        return result
+    result["available"] = True
+    result["temperature"] = row.temperature
+    result["humidity"] = row.humidity
+    result["relay_fan"] = row.relay_fan
+    result["relay_humidifier"] = row.relay_humidifier
+    result["relay_3"] = row.relay_3
+    result["relay_4"] = row.relay_4
+    result["buzzer"] = row.buzzer
+    result["sensor_error"] = row.sensor_error
+    result["source"] = row.source
+    result["created_at"] = row.created_at.isoformat()
+    return result
 
 
 @router.get("/api/history")
@@ -335,6 +349,26 @@ def simulate(payload: SimulatePayload, db: Session = Depends(get_db)) -> dict:
         "created_at": reading.created_at.isoformat(),
         "notification": notification,
     }
+
+
+@router.post("/api/admin/mobile-notify", dependencies=[Depends(_check_admin)])
+def admin_mobile_notify(payload: MobileNotifyPayload) -> dict:
+    global _pending_mobile_notification
+    _pending_mobile_notification = {
+        "id": str(uuid.uuid4()),
+        "title": payload.title,
+        "body": payload.body,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return {"status": "ok", "id": _pending_mobile_notification["id"]}
+
+
+@router.post("/api/mobile/notify-read")
+def mobile_notify_read(payload: MobileNotifyReadPayload) -> dict:
+    global _pending_mobile_notification
+    if _pending_mobile_notification and _pending_mobile_notification["id"] == payload.id:
+        _pending_mobile_notification = None
+    return {"status": "ok"}
 
 
 @router.get("/api/notify/status")

@@ -15,6 +15,7 @@ import { InfoModal } from "../components/InfoModal";
 import { AdminLogin } from "../components/AdminLogin";
 import { AdminSettings } from "../components/AdminSettings";
 import { SimulatePage } from "../components/SimulatePage";
+import { MobilePushPanel } from "../components/MobilePushPanel";
 import { RequestList } from "../components/RequestList";
 import { AdminSidebar, type SidebarTab } from "../components/AdminSidebar";
 import { AnalyticsPanel } from "../components/AnalyticsPanel";
@@ -29,6 +30,7 @@ const tabTitles: Record<SidebarTab, string> = {
   analytics: "Analytics",
   devices: "Devices",
   notifications: "Notifications",
+  mobile_push: "Mobile Push",
   settings: "Settings",
   help: "Help Center",
 };
@@ -320,6 +322,9 @@ export default function AdminPage() {
               />
             </div>
           )}
+
+          {/* Mobile Push Tab */}
+          {tab === "mobile_push" && <MobilePushPanel token={token} />}
 
           {/* Settings Tab */}
           {tab === "settings" && <AdminSettings token={token} />}
