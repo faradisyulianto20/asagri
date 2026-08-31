@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     wa_auth_token: str = "ganti-token-gateway"
     whatsapp_to: str = "6281234567890"
 
+    apk_filename: str = "asagri-mobile.apk"
+
     threshold_fan_on: float = 32.0
     threshold_fan_off: float = 25.0
     threshold_humid_on: float = 61.0

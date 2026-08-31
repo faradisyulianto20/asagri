@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { HelpCircle } from "lucide-react";
+import { Download, HelpCircle } from "lucide-react";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { HumidityCard } from "../components/HumidityCard";
@@ -126,6 +126,15 @@ export default function UserPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <a
+            href="/apk/download"
+            download="asagri-mobile.apk"
+            className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 text-[13px] font-semibold text-primary shadow-sm transition-colors hover:bg-primary/20"
+            title="Download Aplikasi Mobile Asagri"
+          >
+            <Download className="size-4" />
+            Download APK
+          </a>
           <Button
             variant="outline"
             size="icon"

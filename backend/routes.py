@@ -847,6 +847,32 @@ def _frontend_dist() -> Path:
     return candidates[0]
 
 
+_APK_FILENAME = "asagri-mobile.apk"
+
+
+@router.get("/apk/download")
+def download_apk() -> FileResponse:
+    candidates = [
+        Path("apk"),
+        Path(__file__).parent / "apk",
+        Path("static/apk"),
+        Path(__file__).parent / "static" / "apk",
+    ]
+    apk_filename = settings.apk_filename or _APK_FILENAME
+    for dir_path in candidates:
+        apk_path = dir_path / apk_filename
+        if apk_path.is_file():
+            return FileResponse(
+                apk_path,
+                media_type="application/vnd.android.package-archive",
+                filename=apk_filename,
+            )
+    raise HTTPException(
+        status_code=404,
+        detail="APK tidak ditemukan",
+    )
+
+
 @router.get("/dashboard")
 def dashboard() -> FileResponse:
     index = _frontend_dist() / "index.html"
